@@ -64,7 +64,7 @@ export const state = reactive<LiveWxState>({
     overlayEnabled: false,
     playing: false,
     replayIndex: -1,
-    status: 'Overlay off',
+    status: 'Overlay Off',
     error: '',
     alertCount: 0,
     selectedAlert: '',

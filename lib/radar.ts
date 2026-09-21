@@ -79,7 +79,7 @@ function currentStamp(): string {
 }
 
 function statusText(): string {
-    if (!state.overlayEnabled) return 'Overlay off';
+    if (!state.overlayEnabled) return 'Overlay Off';
     const product = currentProduct();
     const site = findSite(state.siteId);
     let where = site ? (isMosaic(site.id) ? 'CONUS mosaic' : site.id) : state.siteId;
@@ -357,7 +357,7 @@ export async function setOverlayEnabled(enabled: boolean): Promise<void> {
             refreshTimer = null;
         }
         if (map) removeRadarLayer(map);
-        state.status = 'Overlay off';
+        state.status = 'Overlay Off';
         return;
     }
     cacheBust = Date.now();

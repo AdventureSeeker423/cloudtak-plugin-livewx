@@ -301,7 +301,7 @@ export function toRidgeStamp(date: Date): string {
 export function mosaicFrameLabel(stamp: string): string {
     if (!stamp || stamp === '0' || stamp === 'live') return 'Live';
     const match = /^m(\d{2})m$/.exec(stamp);
-    if (match) return `${Number(match[1])} min ago`;
+    if (match) return `${Number(match[1])} Min Ago`;
     return stamp;
 }
 
@@ -312,9 +312,9 @@ export function minutesAgo(at: number, now = Date.now()): number {
 
 export function ageLabel(at: number, now = Date.now()): string {
     const min = minutesAgo(at, now);
-    if (min < 1) return 'just now';
-    if (min === 1) return '1 min ago';
-    return `${min} min ago`;
+    if (min < 1) return 'Just Now';
+    if (min === 1) return '1 Min Ago';
+    return `${min} Min Ago`;
 }
 
 export function shortAgeLabel(at: number, now = Date.now()): string {

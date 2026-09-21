@@ -16,174 +16,9 @@
                 class='form-check-label'
                 for='livewx-overlay'
             >
-                Radar overlay
+                Radar Overlay
             </label>
         </div>
-
-        <label
-            class='form-label mb-1'
-            for='livewx-opacity'
-        >
-            Opacity {{ Math.round(state.opacity * 100) }}%
-        </label>
-        <input
-            id='livewx-opacity'
-            class='form-range mb-3'
-            type='range'
-            min='0'
-            max='100'
-            step='1'
-            :value='Math.round(state.opacity * 100)'
-            @input='onOpacity'
-            @wheel.prevent='onOpacityWheel'
-        >
-
-        <label
-            class='form-label mb-1'
-            for='livewx-site-search'
-        >
-            Radar site
-        </label>
-        <div
-            ref='siteComboEl'
-            class='site-combo mb-3'
-        >
-            <input
-                id='livewx-site-search'
-                class='form-control form-control-sm'
-                type='search'
-                autocomplete='off'
-                role='combobox'
-                aria-autocomplete='list'
-                aria-controls='livewx-site-list'
-                :aria-expanded='siteOpen ? "true" : "false"'
-                :placeholder='siteOpen ? "Search site, city, or state" : selectedSiteLabel'
-                :value='siteOpen ? siteDraft : selectedSiteLabel'
-                @focus='onSiteFocus'
-                @input='onSiteDraft'
-                @keydown='onSiteKey'
-            >
-            <div
-                v-if='siteOpen'
-                id='livewx-site-list'
-                class='site-menu'
-                role='listbox'
-            >
-                <button
-                    v-for='(site, idx) in siteMatches'
-                    :key='site.id'
-                    class='site-option'
-                    :class='{ active: idx === siteHighlight }'
-                    type='button'
-                    role='option'
-                    :aria-selected='idx === siteHighlight ? "true" : "false"'
-                    @mousedown.prevent='pickSite(site.id)'
-                >
-                    {{ siteLabel(site) }}
-                </button>
-                <div
-                    v-if='!siteDraft.trim()'
-                    class='site-empty'
-                >
-                    Type a city, state, or site ID
-                </div>
-                <div
-                    v-else-if='!siteMatches.length'
-                    class='site-empty'
-                >
-                    No matching sites
-                </div>
-            </div>
-        </div>
-
-        <div
-            class='form-check form-switch'
-            :class='state.sitesOnMap ? "mb-1" : "mb-3"'
-        >
-            <input
-                id='livewx-sites'
-                class='form-check-input'
-                type='checkbox'
-                :checked='state.sitesOnMap'
-                @change='onSitesToggle'
-            >
-            <label
-                class='form-check-label'
-                for='livewx-sites'
-            >
-                Show radar sites on map
-            </label>
-        </div>
-        <p
-            v-if='state.sitesOnMap'
-            class='text-secondary small mb-3'
-        >
-            WSR-88D in blue, TDWR in orange. Click a site to select it.
-        </p>
-
-        <label
-            class='form-label mb-1'
-            for='livewx-product'
-        >
-            Data type
-        </label>
-        <select
-            id='livewx-product'
-            class='form-select form-select-sm mb-1'
-            :value='state.productId'
-            @change='onProduct'
-        >
-            <optgroup
-                v-for='group in productGroups'
-                :key='group.group'
-                :label='group.group'
-            >
-                <option
-                    v-for='product in group.products'
-                    :key='product.id'
-                    :value='product.id'
-                >
-                    {{ product.label }}
-                </option>
-            </optgroup>
-        </select>
-        <p
-            v-if='isMosaic(state.siteId) && autoSiteId'
-            class='text-secondary small mb-3'
-        >
-            Close-up uses nearest radar {{ autoSiteId }}. Zoom out for the CONUS mosaic.
-        </p>
-        <p
-            v-else-if='isMosaic(state.siteId)'
-            class='text-secondary small mb-3'
-        >
-            Mosaic mode is reflectivity, echo tops, and precipitation. Pick a radar site for velocity and dual-pol.
-        </p>
-        <p
-            v-else
-            class='text-secondary small mb-3'
-        >
-            Level 2 names use the closest IEM Level 3 image (REF→N0B, VEL→N0U).
-        </p>
-
-        <label
-            class='form-label mb-1'
-            for='livewx-filter'
-        >
-            Filter {{ filterLabel }}
-        </label>
-        <input
-            id='livewx-filter'
-            class='form-range mb-3'
-            type='range'
-            min='0'
-            step='1'
-            :max='filterCeiling'
-            :value='state.filter'
-            :disabled='current?.filterKind === "other"'
-            @input='onFilter'
-            @wheel.prevent='onFilterWheel'
-        >
 
         <div class='form-check form-switch mb-3'>
             <input
@@ -197,14 +32,14 @@
                 class='form-check-label'
                 for='livewx-alerts'
             >
-                Watches &amp; warnings
+                Watches &amp; Warnings
             </label>
         </div>
         <p
             v-if='state.alertsEnabled'
             class='text-secondary small mb-3'
         >
-            {{ state.alertCount }} active nationwide (not limited to the selected radar).
+            {{ state.alertCount }} Active Nationwide (Not Limited To The Selected Radar).
         </p>
         <p
             v-if='state.selectedAlert'
@@ -213,65 +48,232 @@
             {{ state.selectedAlert }}
         </p>
 
-        <h4 class='subheader'>
-            Replay
-        </h4>
-        <div class='d-flex gap-2 mb-2'>
-            <button
-                class='btn btn-sm btn-outline-secondary'
-                type='button'
-                :disabled='!frames.length'
-                @click='onPlay'
+        <template v-if='state.overlayEnabled'>
+            <label
+                class='form-label mb-1'
+                for='livewx-opacity'
             >
-                {{ state.playing ? 'Pause' : 'Play' }}
-            </button>
-            <button
-                class='btn btn-sm btn-outline-secondary'
-                type='button'
-                @click='onLive'
-            >
-                Live
-            </button>
-        </div>
-        <div class='replay-wrap mb-3'>
+                Opacity {{ Math.round(state.opacity * 100) }}%
+            </label>
             <input
-                class='form-range mb-0'
+                id='livewx-opacity'
+                class='form-range mb-3'
                 type='range'
                 min='0'
+                max='100'
                 step='1'
-                :max='replaySliderMax'
-                :value='replaySliderValue'
-                :disabled='!frames.length'
-                @input='onReplay'
-                @wheel.prevent='onReplayWheel'
+                :value='Math.round(state.opacity * 100)'
+                @input='onOpacity'
+                @wheel.prevent='onOpacityWheel'
             >
-            <div class='replay-ticks'>
-                <span
-                    v-for='tick in replayTicks'
-                    :key='tick.key'
-                    class='replay-tick'
-                    :class='{
-                        "replay-tick-start": tick.align === "start",
-                        "replay-tick-end": tick.align === "end",
-                    }'
-                    :style='{ left: tick.pct + "%" }'
+
+            <label
+                class='form-label mb-1'
+                for='livewx-site-search'
+            >
+                Radar Site
+            </label>
+            <div
+                ref='siteComboEl'
+                class='site-combo mb-3'
+            >
+                <input
+                    id='livewx-site-search'
+                    class='form-control form-control-sm'
+                    type='search'
+                    autocomplete='off'
+                    role='combobox'
+                    aria-autocomplete='list'
+                    aria-controls='livewx-site-list'
+                    :aria-expanded='siteOpen ? "true" : "false"'
+                    :placeholder='siteOpen ? "Search Site, City, Or State" : selectedSiteLabel'
+                    :value='siteOpen ? siteDraft : selectedSiteLabel'
+                    @focus='onSiteFocus'
+                    @input='onSiteDraft'
+                    @keydown='onSiteKey'
                 >
-                    {{ tick.label }}
-                </span>
+                <div
+                    v-if='siteOpen'
+                    id='livewx-site-list'
+                    class='site-menu'
+                    role='listbox'
+                >
+                    <button
+                        v-for='(site, idx) in siteMatches'
+                        :key='site.id'
+                        class='site-option'
+                        :class='{ active: idx === siteHighlight }'
+                        type='button'
+                        role='option'
+                        :aria-selected='idx === siteHighlight ? "true" : "false"'
+                        @mousedown.prevent='pickSite(site.id)'
+                    >
+                        {{ siteLabel(site) }}
+                    </button>
+                    <div
+                        v-if='!siteDraft.trim()'
+                        class='site-empty'
+                    >
+                        Type A City, State, Or Site ID
+                    </div>
+                    <div
+                        v-else-if='!siteMatches.length'
+                        class='site-empty'
+                    >
+                        No Matching Sites
+                    </div>
+                </div>
+            </div>
+
+            <div
+                class='form-check form-switch'
+                :class='state.sitesOnMap ? "mb-1" : "mb-3"'
+            >
+                <input
+                    id='livewx-sites'
+                    class='form-check-input'
+                    type='checkbox'
+                    :checked='state.sitesOnMap'
+                    @change='onSitesToggle'
+                >
+                <label
+                    class='form-check-label'
+                    for='livewx-sites'
+                >
+                    Show Radar Sites On Map
+                </label>
             </div>
             <p
-                v-if='state.overlayEnabled && isLive'
-                class='small mb-0 mt-2'
+                v-if='state.sitesOnMap'
+                class='text-secondary small mb-3'
             >
-                Live image · {{ liveAgeText }}
+                WSR-88D In Blue, TDWR In Orange. Click A Site To Select It.
+            </p>
+
+            <label
+                class='form-label mb-1'
+                for='livewx-product'
+            >
+                Data Type
+            </label>
+            <select
+                id='livewx-product'
+                class='form-select form-select-sm mb-1'
+                :value='state.productId'
+                @change='onProduct'
+            >
+                <optgroup
+                    v-for='group in productGroups'
+                    :key='group.group'
+                    :label='group.group'
+                >
+                    <option
+                        v-for='product in group.products'
+                        :key='product.id'
+                        :value='product.id'
+                    >
+                        {{ product.label }}
+                    </option>
+                </optgroup>
+            </select>
+            <p
+                v-if='isMosaic(state.siteId) && autoSiteId'
+                class='text-secondary small mb-3'
+            >
+                Close-Up Uses Nearest Radar {{ autoSiteId }}. Zoom Out For The CONUS Mosaic.
+            </p>
+            <p
+                v-else-if='isMosaic(state.siteId)'
+                class='text-secondary small mb-3'
+            >
+                Mosaic Mode Is Reflectivity, Echo Tops, And Precipitation. Pick A Radar Site For Velocity And Dual-Pol.
             </p>
             <p
                 v-else
-                class='text-secondary small mb-0 mt-2'
+                class='text-secondary small mb-3'
             >
-                {{ replayCaption }}
+                Level 2 Names Use The Closest IEM Level 3 Image (REF→N0B, VEL→N0U).
             </p>
-        </div>
+
+            <label
+                class='form-label mb-1'
+                for='livewx-filter'
+            >
+                Filter {{ filterLabel }}
+            </label>
+            <input
+                id='livewx-filter'
+                class='form-range mb-3'
+                type='range'
+                min='0'
+                step='1'
+                :max='filterCeiling'
+                :value='state.filter'
+                :disabled='current?.filterKind === "other"'
+                @input='onFilter'
+                @wheel.prevent='onFilterWheel'
+            >
+
+            <h4 class='subheader'>
+                Replay
+            </h4>
+            <div class='d-flex gap-2 mb-2'>
+                <button
+                    class='btn btn-sm btn-outline-secondary'
+                    type='button'
+                    :disabled='!frames.length'
+                    @click='onPlay'
+                >
+                    {{ state.playing ? 'Pause' : 'Play' }}
+                </button>
+                <button
+                    class='btn btn-sm btn-outline-secondary'
+                    type='button'
+                    @click='onLive'
+                >
+                    Live
+                </button>
+            </div>
+            <div class='replay-wrap mb-3'>
+                <input
+                    class='form-range mb-0'
+                    type='range'
+                    min='0'
+                    step='1'
+                    :max='replaySliderMax'
+                    :value='replaySliderValue'
+                    :disabled='!frames.length'
+                    @input='onReplay'
+                    @wheel.prevent='onReplayWheel'
+                >
+                <div class='replay-ticks'>
+                    <span
+                        v-for='tick in replayTicks'
+                        :key='tick.key'
+                        class='replay-tick'
+                        :class='{
+                            "replay-tick-start": tick.align === "start",
+                            "replay-tick-end": tick.align === "end",
+                        }'
+                        :style='{ left: tick.pct + "%" }'
+                    >
+                        {{ tick.label }}
+                    </span>
+                </div>
+                <p
+                    v-if='isLive'
+                    class='small mb-0 mt-2'
+                >
+                    Live Image · {{ liveAgeText }}
+                </p>
+                <p
+                    v-else
+                    class='text-secondary small mb-0 mt-2'
+                >
+                    {{ replayCaption }}
+                </p>
+            </div>
+        </template>
 
         <p
             class='small mb-0'
@@ -330,8 +332,8 @@ const current = computed(() => currentProduct());
 const filterCeiling = computed(() => filterMax(current.value?.filterKind ?? 'reflectivity'));
 const filterLabel = computed(() => {
     const kind = current.value?.filterKind ?? 'reflectivity';
-    if (kind === 'other') return 'n/a';
-    if (state.filter <= 0) return `off`;
+    if (kind === 'other') return 'N/A';
+    if (state.filter <= 0) return 'Off';
     return `≥ ${state.filter} ${filterUnit(kind)}`;
 });
 
@@ -355,12 +357,12 @@ const replaySliderValue = computed(() => (
 ));
 const liveAgeText = computed(() => {
     void nowMs.value;
-    if (liveValidAt.value == null) return 'age unknown';
+    if (liveValidAt.value == null) return 'Age Unknown';
     return ageLabel(liveValidAt.value, nowMs.value);
 });
 const replayCaption = computed(() => {
     void nowMs.value;
-    if (!frames.value.length) return 'No archive frames for this product';
+    if (!frames.value.length) return 'No Archive Frames For This Product';
     if (isLive.value) return liveValidAt.value != null
         ? `Live · ${ageLabel(liveValidAt.value, nowMs.value)}`
         : 'Live';
@@ -405,6 +407,7 @@ const replayTicks = computed(() => {
 
 function onOverlayToggle(ev: Event): void {
     const on = (ev.target as HTMLInputElement).checked;
+    if (!on) closeSiteMenu();
     void setOverlayEnabled(on);
 }
 
