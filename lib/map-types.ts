@@ -25,4 +25,12 @@ export type LiveWxMap = {
     addControl?: (control: object, position?: string) => void;
     removeControl?: (control: object) => void;
     getContainer?: () => HTMLElement;
+    moveLayer?: (id: string, beforeId?: string) => void;
+    hasImage?: (id: string) => boolean;
+    addImage?: (
+        id: string,
+        image: ImageData | { width: number; height: number; data: Uint8ClampedArray | Uint8Array },
+        options?: { sdf?: boolean; pixelRatio?: number },
+    ) => void;
+    removeImage?: (id: string) => void;
 };

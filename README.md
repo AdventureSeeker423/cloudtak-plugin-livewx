@@ -12,12 +12,12 @@ Requires CloudTAK **13.45** or newer.
 - Level 2 names (REF, VEL, …) map to the closest IEM Level 3 image for this version.
 - Transparency and a min-value **filter** slider (hide weak reflectivity / slow velocity).
 - Optional **watches and warnings** from `api.weather.gov` — nationwide, not scoped to the selected radar.
-- Optional **lightning** from Blitzortung — off by default; when on, strikes in the current map view fade from white to dark red over the strike lifetime (default 120s).
+- Optional **lightning** from Blitzortung — off by default; when on, strikes in the current map view show as lightning bolts that fade from white to yellow to orange to dark red over the strike lifetime (default 120s). The public websocket is **live only**; turning Lightning on does not backfill strikes from before that moment.
 - Simple last-hour **replay** when IEM has archive frames.
 
 Imagery is pre-rendered IEM tiles (CONUS mosaic and per-site RIDGE). Product names are NWS/IEM Level 2 and Level 3 codes; defaults are N0B reflectivity and N0G velocity.
 
-Lightning is client-side only (no TAK/CoT). Strike locations are filtered to the map bounds, not a picked center. This data is for **entertainment / situational awareness only** — not for life safety or official warning.
+Lightning is client-side only (no TAK/CoT). Strike locations are filtered to the map bounds, not a picked center. This data is for **entertainment / situational awareness only** — not for life safety or official warning. Blitzortung’s historical archive requires a station login and is not used here.
 
 ### Lightning and CloudTAK CSP
 

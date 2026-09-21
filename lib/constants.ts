@@ -13,7 +13,9 @@ export const SITES_RANGE_SOURCE_ID = 'livewx-sites-range-source';
 export const SITES_RANGE_FILL_ID = 'livewx-sites-range-fill';
 export const SITES_RANGE_LINE_ID = 'livewx-sites-range-line';
 export const LIGHTNING_SOURCE_ID = 'livewx-lightning-strikes';
-export const LIGHTNING_LAYER_ID = 'livewx-lightning-strikes-circle';
+export const LIGHTNING_LAYER_ID = 'livewx-lightning-strikes-icon';
+export const LIGHTNING_ICON_ID = 'livewx-lightning-bolt';
+export const LIGHTNING_LEGACY_CIRCLE_ID = 'livewx-lightning-strikes-circle';
 
 export const CONUS_SITE_ID = 'CONUS';
 export const IEM_TMS_BASE = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0';

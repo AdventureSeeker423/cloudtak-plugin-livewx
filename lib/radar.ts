@@ -13,6 +13,7 @@ import {
     applyLightning,
     destroyLightning,
     initLightning,
+    raiseLightningLayer,
     restoreLightningLayers,
 } from './lightning.ts';
 import type { LiveWxMap } from './map-types.ts';
@@ -165,6 +166,7 @@ function applyTiles(map: LiveWxMap): void {
             'raster-resampling': 'linear',
         },
     }, firstSymbolLayer(map));
+    raiseLightningLayer();
 }
 
 function ensureRadarLayer(map: LiveWxMap): void {

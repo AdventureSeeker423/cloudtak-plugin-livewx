@@ -5,7 +5,12 @@
  */
 import { reactive } from 'vue';
 import type { PluginAPI } from '@tak-ps/cloudtak';
-import { LIGHTNING_LAYER_ID, LIGHTNING_SOURCE_ID } from './constants.ts';
+import {
+    LIGHTNING_ICON_ID,
+    LIGHTNING_LAYER_ID,
+    LIGHTNING_LEGACY_CIRCLE_ID,
+    LIGHTNING_SOURCE_ID,
+} from './constants.ts';
 import type { LiveWxMap } from './map-types.ts';
 import { state } from './state.ts';
 
@@ -131,9 +136,75 @@ function inBounds(lat: number, lon: number, box: { west: number; east: number; s
     return lon >= box.west || lon <= box.east;
 }
 
-function firstSymbolLayer(map: LiveWxMap): string | undefined {
-    const layers = map.getStyle?.()?.layers ?? [];
-    return layers.find((l) => l.type === 'symbol')?.id;
+const BOLT_SIZE = 64;
+const BOLT_SPREAD = 8;
+const AGE_COLOR: unknown[] = [
+    'interpolate', ['linear'], ['get', 'ageFrac'],
+    0.0, '#ffffff',
+    0.25, '#ffec99',
+    0.5, '#ffa94d',
+    1.0, '#c92a2a',
+];
+
+function makeBoltSdf(): ImageData | null {
+    const canvas = document.createElement('canvas');
+    canvas.width = BOLT_SIZE;
+    canvas.height = BOLT_SIZE;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.clearRect(0, 0, BOLT_SIZE, BOLT_SIZE);
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(34, 4);
+    ctx.lineTo(18, 30);
+    ctx.lineTo(30, 30);
+    ctx.lineTo(20, 60);
+    ctx.lineTo(48, 26);
+    ctx.lineTo(34, 26);
+    ctx.lineTo(42, 4);
+    ctx.closePath();
+    ctx.fill();
+    const src = ctx.getImageData(0, 0, BOLT_SIZE, BOLT_SIZE);
+    const n = BOLT_SIZE * BOLT_SIZE;
+    const inside = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+        inside[i] = src.data[i * 4 + 3] > 127 ? 1 : 0;
+    }
+    const out = ctx.createImageData(BOLT_SIZE, BOLT_SIZE);
+    for (let y = 0; y < BOLT_SIZE; y++) {
+        for (let x = 0; x < BOLT_SIZE; x++) {
+            const i = y * BOLT_SIZE + x;
+            const isIn = inside[i] === 1;
+            let minD = BOLT_SPREAD;
+            const x0 = Math.max(0, x - BOLT_SPREAD);
+            const x1 = Math.min(BOLT_SIZE - 1, x + BOLT_SPREAD);
+            const y0 = Math.max(0, y - BOLT_SPREAD);
+            const y1 = Math.min(BOLT_SIZE - 1, y + BOLT_SPREAD);
+            for (let yy = y0; yy <= y1; yy++) {
+                for (let xx = x0; xx <= x1; xx++) {
+                    if (inside[yy * BOLT_SIZE + xx] === (isIn ? 1 : 0)) continue;
+                    const d = Math.hypot(xx - x, yy - y);
+                    if (d < minD) minD = d;
+                }
+            }
+            const signed = isIn ? minD : -minD;
+            const v = Math.round(Math.min(1, Math.max(0, 0.5 + 0.5 * (signed / BOLT_SPREAD))) * 255);
+            const o = i * 4;
+            out.data[o] = 255;
+            out.data[o + 1] = 255;
+            out.data[o + 2] = 255;
+            out.data[o + 3] = v;
+        }
+    }
+    return out;
+}
+
+function ensureBoltImage(map: LiveWxMap): boolean {
+    if (map.hasImage?.(LIGHTNING_ICON_ID)) return true;
+    const image = makeBoltSdf();
+    if (!image || !map.addImage) return false;
+    map.addImage(LIGHTNING_ICON_ID, image, { sdf: true, pixelRatio: 2 });
+    return Boolean(map.hasImage?.(LIGHTNING_ICON_ID) ?? true);
 }
 
 function emptyCollection(): { type: 'FeatureCollection'; features: [] } {
@@ -194,6 +265,9 @@ function ensureLayers(): void {
     const map = mapOf();
     if (!map) return;
     try {
+        if (map.getLayer(LIGHTNING_LEGACY_CIRCLE_ID)) {
+            map.removeLayer(LIGHTNING_LEGACY_CIRCLE_ID);
+        }
         if (!map.getSource(LIGHTNING_SOURCE_ID)) {
             map.addSource(LIGHTNING_SOURCE_ID, {
                 type: 'geojson',
@@ -201,36 +275,72 @@ function ensureLayers(): void {
             });
         }
         if (!map.getLayer(LIGHTNING_LAYER_ID)) {
-            map.addLayer({
-                id: LIGHTNING_LAYER_ID,
-                type: 'circle',
-                source: LIGHTNING_SOURCE_ID,
-                paint: {
-                    'circle-color': [
-                        'interpolate', ['linear'], ['get', 'ageFrac'],
-                        0.0, '#ffffff',
-                        0.25, '#ffec99',
-                        0.5, '#ffa94d',
-                        1.0, '#c92a2a',
-                    ],
-                    'circle-radius': [
-                        'interpolate', ['linear'], ['get', 'ageFrac'],
-                        0.0, 7,
-                        1.0, 3,
-                    ],
-                    'circle-opacity': [
-                        'interpolate', ['linear'], ['get', 'ageFrac'],
-                        0.0, 1.0,
-                        1.0, 0.4,
-                    ],
-                    'circle-stroke-color': '#000000',
-                    'circle-stroke-width': 1,
-                },
-            }, firstSymbolLayer(map));
+            const useIcon = ensureBoltImage(map);
+            if (useIcon) {
+                map.addLayer({
+                    id: LIGHTNING_LAYER_ID,
+                    type: 'symbol',
+                    source: LIGHTNING_SOURCE_ID,
+                    layout: {
+                        'icon-image': LIGHTNING_ICON_ID,
+                        'icon-allow-overlap': true,
+                        'icon-ignore-placement': true,
+                        'icon-anchor': 'center',
+                        'icon-padding': 0,
+                        'icon-size': [
+                            'interpolate', ['linear'], ['get', 'ageFrac'],
+                            0.0, 0.9,
+                            1.0, 0.5,
+                        ],
+                    },
+                    paint: {
+                        'icon-color': AGE_COLOR,
+                        'icon-opacity': [
+                            'interpolate', ['linear'], ['get', 'ageFrac'],
+                            0.0, 1.0,
+                            1.0, 0.45,
+                        ],
+                        'icon-halo-color': '#000000',
+                        'icon-halo-width': 1,
+                    },
+                });
+            } else {
+                map.addLayer({
+                    id: LIGHTNING_LAYER_ID,
+                    type: 'circle',
+                    source: LIGHTNING_SOURCE_ID,
+                    paint: {
+                        'circle-color': AGE_COLOR,
+                        'circle-radius': [
+                            'interpolate', ['linear'], ['get', 'ageFrac'],
+                            0.0, 7,
+                            1.0, 3,
+                        ],
+                        'circle-opacity': [
+                            'interpolate', ['linear'], ['get', 'ageFrac'],
+                            0.0, 1.0,
+                            1.0, 0.4,
+                        ],
+                        'circle-stroke-color': '#000000',
+                        'circle-stroke-width': 1,
+                    },
+                });
+            }
         }
+        raiseLightning(map);
     } catch {
         /* style not ready */
     }
+}
+
+function raiseLightning(map: LiveWxMap): void {
+    if (!map.getLayer(LIGHTNING_LAYER_ID)) return;
+    try { map.moveLayer?.(LIGHTNING_LAYER_ID); } catch { /* ignore */ }
+}
+
+export function raiseLightningLayer(): void {
+    const map = mapOf();
+    if (map) raiseLightning(map);
 }
 
 function onViewChange(): void {
@@ -373,7 +483,9 @@ function removeLayers(): void {
     const map = mapOf();
     if (!map) return;
     try { if (map.getLayer(LIGHTNING_LAYER_ID)) map.removeLayer(LIGHTNING_LAYER_ID); } catch { /* ignore */ }
+    try { if (map.getLayer(LIGHTNING_LEGACY_CIRCLE_ID)) map.removeLayer(LIGHTNING_LEGACY_CIRCLE_ID); } catch { /* ignore */ }
     try { if (map.getSource(LIGHTNING_SOURCE_ID)) map.removeSource(LIGHTNING_SOURCE_ID); } catch { /* ignore */ }
+    try { if (map.hasImage?.(LIGHTNING_ICON_ID)) map.removeImage?.(LIGHTNING_ICON_ID); } catch { /* ignore */ }
 }
 
 export function destroyLightning(): void {

@@ -1,9 +1,5 @@
 <template>
     <div class='livewx-pane'>
-        <p class='text-secondary small mb-3'>
-            Live NEXRAD overlay from Iowa Environmental Mesonet. Watches and warnings from the National Weather Service. Lightning from Blitzortung, shown in the current map view.
-        </p>
-
         <div class='form-check form-switch mb-3'>
             <input
                 id='livewx-overlay'
@@ -75,25 +71,8 @@
                 @input='onLightningLifetime'
                 @wheel.prevent='onLightningLifetimeWheel'
             >
-            <p class='text-secondary small mb-1'>
+            <p class='text-secondary small mb-3'>
                 {{ lightningStatus }} · {{ lightning.inView.length }} In View
-            </p>
-            <ul
-                v-if='recentStrikes.length'
-                class='livewx-strikes list-unstyled small mb-3'
-            >
-                <li
-                    v-for='s in recentStrikes'
-                    :key='s.id'
-                >
-                    {{ strikeLine(s) }}
-                </li>
-            </ul>
-            <p
-                v-else
-                class='text-secondary small mb-3'
-            >
-                No Strikes In View Yet.
             </p>
         </template>
 
@@ -358,7 +337,7 @@
 </template>
 
 <script setup lang='ts'>
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import type { PluginAPI } from '@tak-ps/cloudtak';
 import {
     currentProduct,
@@ -378,7 +357,6 @@ import {
     visibleProducts,
 } from './radar.ts';
 import { lightning } from './lightning.ts';
-import type { VisibleStrike } from './lightning.ts';
 import { groupedOptions, availableTilts, filterMax, filterUnit, tiltLabel } from './products.ts';
 import { findSite, isMosaic, searchSites, siteLabel } from './sites.ts';
 import {
@@ -438,7 +416,6 @@ const tiltOptions = computed(() => {
 
 const nowMs = ref(Date.now());
 let ageTimer: ReturnType<typeof setInterval> | undefined;
-let lightningAgeTimer: ReturnType<typeof setInterval> | undefined;
 onMounted(() => {
     ageTimer = setInterval(() => {
         nowMs.value = Date.now();
@@ -447,20 +424,8 @@ onMounted(() => {
 });
 onUnmounted(() => {
     if (ageTimer) clearInterval(ageTimer);
-    if (lightningAgeTimer) clearInterval(lightningAgeTimer);
     document.removeEventListener('mousedown', onSiteDocDown);
 });
-watch(() => state.lightningEnabled, (on) => {
-    if (lightningAgeTimer) {
-        clearInterval(lightningAgeTimer);
-        lightningAgeTimer = undefined;
-    }
-    if (!on) return;
-    nowMs.value = Date.now();
-    lightningAgeTimer = setInterval(() => {
-        nowMs.value = Date.now();
-    }, 1000);
-}, { immediate: true });
 
 const isLive = computed(() => state.replayIndex < 0);
 const replaySliderMax = computed(() => Math.max(frames.value.length, 0));
@@ -650,26 +615,6 @@ const lightningStatus = computed(() => {
     return 'Connecting…';
 });
 
-const recentStrikes = computed(() => (
-    [...lightning.inView]
-        .sort((a, b) => b.timeMs - a.timeMs)
-        .slice(0, 10)
-));
-
-function strikeAge(ms: number): string {
-    void nowMs.value;
-    const sec = Math.max(0, Math.round((Date.now() - ms) / 1000));
-    if (sec < 60) return `${sec}s Ago`;
-    const min = Math.round(sec / 60);
-    return min === 1 ? '1 Min Ago' : `${min} Min Ago`;
-}
-
-function strikeLine(s: VisibleStrike): string {
-    const dist = s.distMi < 10 ? s.distMi.toFixed(1) : String(Math.round(s.distMi));
-    const dir = s.compass ? ` ${s.compass}` : '';
-    return `${dist} Mi${dir} · ${strikeAge(s.timeMs)}`;
-}
-
 function onPlay(): void {
     togglePlay();
 }
@@ -769,12 +714,5 @@ function onReplayWheel(ev: WheelEvent): void {
     padding: 8px 10px;
     font-size: 12px;
     color: var(--tblr-secondary, inherit);
-}
-.livewx-strikes {
-    max-height: 180px;
-    overflow-y: auto;
-}
-.livewx-strikes li {
-    padding: 2px 0;
 }
 </style>
