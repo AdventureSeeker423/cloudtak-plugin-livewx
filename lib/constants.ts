@@ -1,6 +1,5 @@
 export const ROUTE_NAME = 'home-menu-plugin-livewx-radar';
 export const MENU_KEY = 'livewx-radar';
-export const BOTTOM_BAR_KEY = 'livewx-radar-bottom-bar';
 
 export const RADAR_SOURCE_ID = 'livewx-radar-source';
 export const RADAR_LAYER_ID = 'livewx-radar-layer';

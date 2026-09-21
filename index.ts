@@ -1,11 +1,10 @@
 import type { App } from 'vue';
-import { h, markRaw } from 'vue';
+import { h } from 'vue';
 import type { PluginAPI, PluginInstance } from '@tak-ps/cloudtak';
 import MenuTemplate from './lib/MenuTemplate.vue';
 import RadarContainer from './lib/RadarContainer.vue';
-import RadarBottomBar from './lib/RadarBottomBar.vue';
 import IconRadarUrl from './lib/Radar.svg';
-import { MENU_KEY, ROUTE_NAME, BOTTOM_BAR_KEY } from './lib/constants.ts';
+import { MENU_KEY, ROUTE_NAME } from './lib/constants.ts';
 import { destroy, init } from './lib/radar.ts';
 
 const IconRadar = {
@@ -53,16 +52,10 @@ export default class LiveWxRadar implements PluginInstance {
             description: 'NEXRAD overlay and NWS watches/warnings',
             icon: IconRadar,
         });
-
-        this.api.bottomBar.add({
-            key: BOTTOM_BAR_KEY,
-            component: markRaw(RadarBottomBar),
-        });
     }
 
     async disable(): Promise<void> {
         destroy();
-        try { this.api.bottomBar.remove(BOTTOM_BAR_KEY); } catch { /* ignore */ }
         try { this.api.menu.remove(MENU_KEY); } catch { /* ignore */ }
         // Intentionally NOT removing the route — see constructor note.
     }
