@@ -30,8 +30,6 @@ export const DEFAULT_FILTER = 0;
 export const MOSAIC_MAXZOOM = 8;
 /** Single-site RIDGE has more native detail. */
 export const RIDGE_MAXZOOM = 10;
-/** At this zoom and above, CONUS mosaic switches to the nearest WSR-88D. */
-export const MOSAIC_CLOSEUP_ZOOM = 7;
 
 /** Standard 0.5° base reflectivity coverage (124 nmi). */
 export const WSR88D_RANGE_KM = 230;

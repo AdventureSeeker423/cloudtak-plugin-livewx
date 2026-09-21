@@ -38,24 +38,6 @@ export function findSite(id: string): RadarSite | undefined {
     return ALL_SITES.find((s) => s.id === id);
 }
 
-/** Nearest WSR-88D to a map point (TDWR skipped — short range, airport-only). */
-export function nearestWsr88d(lat: number, lon: number): RadarSite | undefined {
-    const cos = Math.cos(lat * Math.PI / 180);
-    let best: RadarSite | undefined;
-    let bestD = Number.POSITIVE_INFINITY;
-    for (const site of ALL_SITES) {
-        if (site.type !== 'wsr88d') continue;
-        const dlat = site.lat - lat;
-        const dlon = (site.lon - lon) * cos;
-        const d = dlat * dlat + dlon * dlon;
-        if (d < bestD) {
-            bestD = d;
-            best = site;
-        }
-    }
-    return best;
-}
-
 export function isMosaic(id: string): boolean {
     return id === CONUS_SITE_ID;
 }

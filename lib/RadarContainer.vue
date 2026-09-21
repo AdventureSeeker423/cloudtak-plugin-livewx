@@ -177,13 +177,7 @@
                 </optgroup>
             </select>
             <p
-                v-if='isMosaic(state.siteId) && autoSiteId'
-                class='text-secondary small mb-3'
-            >
-                Close-Up Uses Nearest Radar {{ autoSiteId }}. Zoom Out For The CONUS Mosaic.
-            </p>
-            <p
-                v-else-if='isMosaic(state.siteId)'
+                v-if='isMosaic(state.siteId)'
                 class='text-secondary small mb-3'
             >
                 Mosaic Mode Is Reflectivity, Echo Tops, And Precipitation. Pick A Radar Site For Velocity And Dual-Pol.
@@ -288,7 +282,6 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import type { PluginAPI } from '@tak-ps/cloudtak';
 import {
-    autoSiteId,
     currentProduct,
     applyAlerts,
     applyFilter,
@@ -415,6 +408,8 @@ function wheelStep(ev: WheelEvent): number {
     return ev.deltaY < 0 ? 1 : -1;
 }
 
+let lastFilterWheel = 0;
+
 function onOpacity(ev: Event): void {
     setOpacity(Number((ev.target as HTMLInputElement).value) / 100);
     applyOpacity();
@@ -500,6 +495,9 @@ function onFilter(ev: Event): void {
 
 function onFilterWheel(ev: WheelEvent): void {
     if (current.value?.filterKind === 'other') return;
+    const now = performance.now();
+    if (now - lastFilterWheel < 70) return;
+    lastFilterWheel = now;
     setFilter(state.filter + wheelStep(ev));
     applyFilter();
 }

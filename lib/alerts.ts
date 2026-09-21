@@ -75,54 +75,58 @@ function ensurePopupStyle(): void {
     el.id = POPUP_STYLE_ID;
     el.textContent = `
 .livewx-alert-popup .maplibregl-popup-content {
-    color: #1a1a1a;
-    background: #ffffff;
+    color: var(--tblr-body-color, var(--bs-body-color, inherit));
+    background: var(--tblr-bg-surface, var(--bs-tertiary-bg, var(--bs-body-bg, Canvas)));
+    border: 1px solid var(--tblr-border-color, var(--bs-border-color, rgba(127, 127, 127, 0.35)));
     padding: 12px 32px 12px 12px;
     border-radius: 8px;
-    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
-    font: 13px/1.45 system-ui, Segoe UI, sans-serif;
+    box-shadow: var(--tblr-box-shadow-lg, 0 4px 18px rgba(0, 0, 0, 0.35));
+    font: 13px/1.45 var(--tblr-font-sans-serif, system-ui, Segoe UI, sans-serif);
 }
 .livewx-alert-popup .maplibregl-popup-close-button {
-    color: #222222;
+    color: var(--tblr-secondary, var(--bs-secondary-color, inherit));
     font-size: 18px;
     padding: 4px 8px;
 }
 .livewx-alert-popup .maplibregl-popup-close-button:hover {
-    color: #000000;
+    color: var(--tblr-body-color, var(--bs-body-color, inherit));
     background: transparent;
 }
 .livewx-alert-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
 .livewx-alert-popup.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
 .livewx-alert-popup.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
-    border-top-color: #ffffff;
+    border-top-color: var(--tblr-bg-surface, var(--bs-tertiary-bg, var(--bs-body-bg, Canvas)));
 }
 .livewx-alert-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip,
 .livewx-alert-popup.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
 .livewx-alert-popup.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
-    border-bottom-color: #ffffff;
+    border-bottom-color: var(--tblr-bg-surface, var(--bs-tertiary-bg, var(--bs-body-bg, Canvas)));
 }
 .livewx-alert-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
-    border-right-color: #ffffff;
+    border-right-color: var(--tblr-bg-surface, var(--bs-tertiary-bg, var(--bs-body-bg, Canvas)));
 }
 .livewx-alert-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
-    border-left-color: #ffffff;
+    border-left-color: var(--tblr-bg-surface, var(--bs-tertiary-bg, var(--bs-body-bg, Canvas)));
+}
+.livewx-alert-card {
+    max-width: 280px;
 }
 .livewx-alert-title {
-    color: #111111;
+    color: var(--tblr-body-color, var(--bs-body-color, inherit));
     font-size: 15px;
     font-weight: 700;
 }
 .livewx-alert-body {
-    color: #222222;
+    color: var(--tblr-body-color, var(--bs-body-color, inherit));
     margin-top: 6px;
 }
 .livewx-alert-meta {
-    color: #444444;
+    color: var(--tblr-secondary, var(--bs-secondary-color, inherit));
     margin-top: 6px;
     font-size: 12px;
 }
 .livewx-alert-instruction {
-    color: #111111;
+    color: var(--tblr-body-color, var(--bs-body-color, inherit));
     margin-top: 8px;
     white-space: pre-wrap;
 }
@@ -236,7 +240,7 @@ async function showPopup(
     const headline = props.headline ?? '';
     const expires = props.expires ? `Expires ${props.expires}` : '';
     const instruction = props.instruction ?? '';
-    const html = `<div style="max-width:280px;color:#1a1a1a;background:#ffffff">
+    const html = `<div class="livewx-alert-card">
         <div class="livewx-alert-title">${escapeHtml(event)}</div>
         ${headline ? `<div class="livewx-alert-body">${escapeHtml(headline)}</div>` : ''}
         ${expires ? `<div class="livewx-alert-meta">${escapeHtml(expires)}</div>` : ''}
