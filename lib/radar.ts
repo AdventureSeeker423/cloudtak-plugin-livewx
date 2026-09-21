@@ -1,8 +1,9 @@
 import { ref } from 'vue';
 import type { PluginAPI } from '@tak-ps/cloudtak';
-import { startAlerts, stopAlerts } from './alerts.ts';
+import { stackAlertLayers, startAlerts, stopAlerts } from './alerts.ts';
 import { attachRadarAgeControl, detachRadarAgeControl, setRadarAge } from './age-control.ts';
 import {
+    ALERT_LINE_ID,
     MOSAIC_MAXZOOM,
     RADAR_LAYER_ID,
     RADAR_SOURCE_ID,
@@ -167,7 +168,8 @@ function applyTiles(map: LiveWxMap): void {
             'raster-fade-duration': 0,
             'raster-resampling': 'linear',
         },
-    }, firstSymbolLayer(map));
+    }, map.getLayer(ALERT_LINE_ID) ? ALERT_LINE_ID : firstSymbolLayer(map));
+    stackAlertLayers(map);
     raiseLightningLayer();
 }
 

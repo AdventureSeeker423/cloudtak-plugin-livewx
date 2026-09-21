@@ -1,5 +1,12 @@
 import type { PluginAPI } from '@tak-ps/cloudtak';
-import { ALERT_FILL_ID, ALERT_LINE_ID, ALERT_POLL_MS, ALERT_SOURCE_ID, NWS_ALERTS_URL } from './constants.ts';
+import {
+    ALERT_FILL_ID,
+    ALERT_LINE_ID,
+    ALERT_POLL_MS,
+    ALERT_SOURCE_ID,
+    NWS_ALERTS_URL,
+    RADAR_LAYER_ID,
+} from './constants.ts';
 import type { LiveWxMap } from './map-types.ts';
 import { state } from './state.ts';
 import { SURFACE_BG, SURFACE_BORDER, SURFACE_FG, syncSidebarTheme } from './theme.ts';
@@ -176,6 +183,28 @@ function firstSymbolLayer(map: LiveWxMap): string | undefined {
     return symbol?.id;
 }
 
+function layerAfter(map: LiveWxMap, id: string): string | undefined {
+    const layers = map.getStyle?.()?.layers ?? [];
+    const i = layers.findIndex((l) => l.id === id);
+    if (i < 0) return firstSymbolLayer(map);
+    return layers[i + 1]?.id;
+}
+
+/** Fill under radar, outline immediately above radar. */
+export function stackAlertLayers(map: LiveWxMap): void {
+    if (map.getLayer(ALERT_FILL_ID) && map.getLayer(RADAR_LAYER_ID)) {
+        try { map.moveLayer?.(ALERT_FILL_ID, RADAR_LAYER_ID); } catch { /* ignore */ }
+    }
+    if (map.getLayer(ALERT_LINE_ID) && map.getLayer(RADAR_LAYER_ID)) {
+        const after = layerAfter(map, RADAR_LAYER_ID);
+        if (after && after !== ALERT_LINE_ID) {
+            try { map.moveLayer?.(ALERT_LINE_ID, after); } catch { /* ignore */ }
+        } else if (!after) {
+            try { map.moveLayer?.(ALERT_LINE_ID); } catch { /* ignore */ }
+        }
+    }
+}
+
 function ensureAlertLayers(map: LiveWxMap): void {
     if (!map.getSource(ALERT_SOURCE_ID)) {
         map.addSource(ALERT_SOURCE_ID, {
@@ -183,6 +212,7 @@ function ensureAlertLayers(map: LiveWxMap): void {
             data: emptyCollection(),
         });
     }
+    const underRadar = map.getLayer(RADAR_LAYER_ID) ? RADAR_LAYER_ID : firstSymbolLayer(map);
     if (!map.getLayer(ALERT_FILL_ID)) {
         map.addLayer({
             id: ALERT_FILL_ID,
@@ -192,9 +222,12 @@ function ensureAlertLayers(map: LiveWxMap): void {
                 'fill-color': ['coalesce', ['get', 'fill'], '#ff0000'],
                 'fill-opacity': 0.28,
             },
-        }, firstSymbolLayer(map));
+        }, underRadar);
     }
     if (!map.getLayer(ALERT_LINE_ID)) {
+        const aboveRadar = map.getLayer(RADAR_LAYER_ID)
+            ? layerAfter(map, RADAR_LAYER_ID)
+            : firstSymbolLayer(map);
         map.addLayer({
             id: ALERT_LINE_ID,
             type: 'line',
@@ -204,8 +237,9 @@ function ensureAlertLayers(map: LiveWxMap): void {
                 'line-width': 2,
                 'line-opacity': 0.9,
             },
-        }, firstSymbolLayer(map));
+        }, aboveRadar);
     }
+    stackAlertLayers(map);
 }
 
 function removeAlertLayers(map: LiveWxMap): void {
@@ -363,7 +397,9 @@ export function startAlerts(api: PluginAPI): void {
     mapRef = map;
     ensureAlertLayers(map);
     map.off('click', ALERT_FILL_ID, onAlertClick);
+    map.off('click', ALERT_LINE_ID, onAlertClick);
     map.on('click', ALERT_FILL_ID, onAlertClick);
+    map.on('click', ALERT_LINE_ID, onAlertClick);
     void refresh(map);
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = setInterval(() => {
@@ -381,6 +417,7 @@ export function stopAlerts(): void {
     state.alertCount = 0;
     if (mapRef) {
         try { mapRef.off('click', ALERT_FILL_ID, onAlertClick); } catch { /* ignore */ }
+        try { mapRef.off('click', ALERT_LINE_ID, onAlertClick); } catch { /* ignore */ }
         removeAlertLayers(mapRef);
     }
     mapRef = null;

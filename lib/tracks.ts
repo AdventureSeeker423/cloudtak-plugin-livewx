@@ -61,8 +61,8 @@ type GeoSource = { setData?: (data: unknown) => void };
 const EARTH_KM = 6371.0088;
 const NM_KM = 1.852;
 const FCST_MIN = [15, 30, 45, 60];
-const HISTORY_MAX = 8;
-const MOVE_MIN_KM = 0.4;
+const HISTORY_MIN = 60;
+const SNAP_STEP_MIN = 5;
 const MERGE_KM = 18;
 const MERGE_DIR_DEG = 40;
 const MERGE_SPEED_KT = 15;
@@ -84,10 +84,14 @@ type Cell = {
 
 const POPUP_STYLE_ID = 'livewx-track-popup-style';
 
+type PathPt = { lon: number; lat: number; at: number };
+type Snap = { at: number; cells: Cell[] };
+
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let mapRef: LiveWxMap | null = null;
 let popup: { remove: () => void } | null = null;
-const history = new Map<string, Array<{ lon: number; lat: number }>>();
+let snaps: Snap[] = [];
+let backfillDone = false;
 
 function num(value: unknown, fallback = 0): number {
     const n = typeof value === 'number' ? value : Number(value);
@@ -132,20 +136,6 @@ function distKm(a: { lon: number; lat: number }, lon: number, lat: number): numb
     const h = Math.sin(dLat / 2) ** 2
         + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
     return 2 * EARTH_KM * Math.asin(Math.min(1, Math.sqrt(h)));
-}
-
-function remember(key: string, lon: number, lat: number): Array<{ lon: number; lat: number }> {
-    const prev = history.get(key) ?? [];
-    const last = prev[prev.length - 1];
-    if (!last || distKm(last, lon, lat) >= MOVE_MIN_KM) {
-        prev.push({ lon, lat });
-    } else {
-        last.lon = lon;
-        last.lat = lat;
-    }
-    if (prev.length > HISTORY_MAX) prev.splice(0, prev.length - HISTORY_MAX);
-    history.set(key, prev);
-    return prev;
 }
 
 function angleDiff(a: number, b: number): number {
@@ -226,41 +216,138 @@ function parseCells(raw: AttrCollection): Cell[] {
     return cells;
 }
 
-function buildCollection(raw: AttrCollection): GeoCollection {
+function bearingDeg(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const toRad = (d: number) => d * Math.PI / 180;
+    const dLon = toRad(lon2 - lon1);
+    const y = Math.sin(dLon) * Math.cos(toRad(lat2));
+    const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2))
+        - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
+    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+function observedMotion(path: PathPt[]): { heading: number; sknt: number } | null {
+    if (path.length < 2) return null;
+    const end = path[path.length - 1];
+    let start: PathPt | null = null;
+    let bestDelta = Infinity;
+    for (let i = path.length - 2; i >= 0; i--) {
+        const dtMin = (end.at - path[i].at) / 60_000;
+        if (dtMin < 8 || dtMin > 28) continue;
+        const delta = Math.abs(dtMin - 16);
+        if (delta < bestDelta) {
+            bestDelta = delta;
+            start = path[i];
+        }
+    }
+    if (!start) {
+        for (let i = path.length - 2; i >= 0; i--) {
+            const dtHr = (end.at - path[i].at) / 3_600_000;
+            if (dtHr >= 4 / 60 && dtHr <= 0.45) {
+                start = path[i];
+                break;
+            }
+        }
+    }
+    if (!start) return null;
+    const dtHr = (end.at - start.at) / 3_600_000;
+    if (dtHr < 4 / 60) return null;
+    const km = distKm(start, end.lon, end.lat);
+    const sknt = (km / NM_KM) / dtHr;
+    if (sknt < MIN_TRACK_KT || sknt > MAX_TRACK_KT) return null;
+    return { heading: bearingDeg(start.lat, start.lon, end.lat, end.lon), sknt };
+}
+
+function tickFeature(label: string, lon: number, lat: number, heading: number): GeoFeature {
+    return {
+        type: 'Feature',
+        properties: { kind: 'tick', label },
+        geometry: {
+            type: 'LineString',
+            coordinates: [
+                dest(lon, lat, heading - 90, TICK_HALF_KM),
+                dest(lon, lat, heading + 90, TICK_HALF_KM),
+            ],
+        },
+    };
+}
+
+function cellKey(cell: Cell): string {
+    return `${cell.nexrad}-${cell.id}`;
+}
+
+function pathsFromSnaps(): Map<string, PathPt[]> {
+    const paths = new Map<string, PathPt[]>();
+    const ordered = [...snaps].sort((a, b) => a.at - b.at);
+    for (const snap of ordered) {
+        for (const cell of snap.cells) {
+            const key = cellKey(cell);
+            const pts = paths.get(key) ?? [];
+            const last = pts[pts.length - 1];
+            if (last && snap.at - last.at > 16 * 60_000) pts.length = 0;
+            if (!last || distKm(last, cell.lon, cell.lat) >= 0.25 || snap.at - last.at >= 90_000) {
+                pts.push({ lon: cell.lon, lat: cell.lat, at: snap.at });
+            } else {
+                last.lon = cell.lon;
+                last.lat = cell.lat;
+                last.at = snap.at;
+            }
+            paths.set(key, pts);
+        }
+    }
+    return paths;
+}
+
+function cellValidAt(cell: Cell): number {
+    const t = Date.parse(text(cell.props.valid));
+    return Number.isFinite(t) ? t : Date.now();
+}
+
+function pushSnap(raw: AttrCollection): void {
+    const groups = new Map<number, Cell[]>();
+    for (const cell of parseCells(raw)) {
+        const at = cellValidAt(cell);
+        const list = groups.get(at) ?? [];
+        list.push(cell);
+        groups.set(at, list);
+    }
+    for (const [at, cells] of groups) {
+        const existing = snaps.find((s) => Math.abs(s.at - at) < 90_000);
+        if (existing) {
+            const byKey = new Map(existing.cells.map((c) => [cellKey(c), c]));
+            for (const cell of cells) byKey.set(cellKey(cell), cell);
+            existing.cells = [...byKey.values()];
+            continue;
+        }
+        snaps.push({ at, cells });
+    }
+    const cutoff = Date.now() - (HISTORY_MIN + 5) * 60_000;
+    snaps = snaps.filter((s) => s.at >= cutoff);
+}
+
+function buildCollection(current: AttrCollection): GeoCollection {
     const features: GeoFeature[] = [];
-    const seen = new Set<string>();
-    for (const cell of pickBest(parseCells(raw))) {
+    const paths = pathsFromSnaps();
+    for (const cell of pickBest(parseCells(current))) {
         const { lon, lat, nexrad, id, props } = cell;
         const label = `${nexrad} ${id}`;
-        const key = `${nexrad}-${id}`;
-        seen.add(key);
-        const pastLine = remember(key, lon, lat).map((p) => [p.lon, p.lat]);
-        if (pastLine.length > 1) {
+        const path = paths.get(cellKey(cell)) ?? [{ lon, lat, at: Date.now() }];
+        if (path.length > 1) {
             features.push({
                 type: 'Feature',
                 properties: { kind: 'past', label },
-                geometry: { type: 'LineString', coordinates: pastLine },
+                geometry: { type: 'LineString', coordinates: path.map((p) => [p.lon, p.lat]) },
             });
         }
-        const sknt = num(props.sknt);
-        const drct = num(props.drct);
+        const observed = observedMotion(path);
+        const heading = observed?.heading ?? num(props.drct);
+        const sknt = observed?.sknt ?? num(props.sknt);
         const forecast: number[][] = [[lon, lat]];
         if (sknt >= MIN_TRACK_KT && sknt <= MAX_TRACK_KT) {
             for (const min of FCST_MIN) {
                 const km = sknt * (min / 60) * NM_KM;
-                const pt = dest(lon, lat, drct, km);
+                const pt = dest(lon, lat, heading, km);
                 forecast.push(pt);
-                features.push({
-                    type: 'Feature',
-                    properties: { kind: 'tick', label, minutes: min },
-                    geometry: {
-                        type: 'LineString',
-                        coordinates: [
-                            dest(pt[0], pt[1], drct - 90, TICK_HALF_KM),
-                            dest(pt[0], pt[1], drct + 90, TICK_HALF_KM),
-                        ],
-                    },
-                });
+                features.push(tickFeature(label, pt[0], pt[1], heading));
             }
             features.push({
                 type: 'Feature',
@@ -284,15 +371,12 @@ function buildCollection(raw: AttrCollection): GeoCollection {
                 max_dbz: num(props.max_dbz),
                 max_dbz_height: num(props.max_dbz_height),
                 top: num(props.top),
-                drct,
-                sknt,
+                drct: Math.round(heading),
+                sknt: Math.round(sknt),
                 valid: text(props.valid),
             },
             geometry: { type: 'Point', coordinates: [lon, lat] },
         });
-    }
-    for (const key of [...history.keys()]) {
-        if (!seen.has(key)) history.delete(key);
     }
     return { type: 'FeatureCollection', features };
 }
@@ -394,17 +478,42 @@ function removeLayers(map: LiveWxMap): void {
     try { if (map.getSource(TRACKS_SOURCE_ID)) map.removeSource(TRACKS_SOURCE_ID); } catch { /* ignore */ }
 }
 
-async function fetchAttrs(): Promise<AttrCollection> {
-    const res = await fetch(IEM_NEXRAD_ATTR_URL, {
+function attrUrl(atMs?: number): string {
+    if (atMs == null) return IEM_NEXRAD_ATTR_URL;
+    const valid = new Date(atMs).toISOString().replace(/\.\d{3}Z$/, 'Z');
+    return `${IEM_NEXRAD_ATTR_URL}?valid=${encodeURIComponent(valid)}`;
+}
+
+async function fetchAttrs(atMs?: number): Promise<AttrCollection> {
+    const res = await fetch(attrUrl(atMs), {
         headers: { Accept: 'application/geo+json, application/json' },
     });
     if (!res.ok) throw new Error(`Storm Tracks HTTP ${res.status}`);
     return await res.json() as AttrCollection;
 }
 
+async function backfillHistory(): Promise<void> {
+    if (backfillDone) return;
+    const offsets: number[] = [];
+    for (let min = SNAP_STEP_MIN; min <= HISTORY_MIN; min += SNAP_STEP_MIN) {
+        offsets.push(min);
+    }
+    await Promise.all(offsets.map(async (min) => {
+        try {
+            pushSnap(await fetchAttrs(Date.now() - min * 60_000));
+        } catch {
+            /* older scan optional */
+        }
+    }));
+    backfillDone = true;
+}
+
 async function refresh(map: LiveWxMap): Promise<void> {
     try {
-        const data = buildCollection(await fetchAttrs());
+        const current = await fetchAttrs();
+        pushSnap(current);
+        if (!backfillDone) await backfillHistory();
+        const data = buildCollection(current);
         const src = map.getSource(TRACKS_SOURCE_ID) as GeoSource | undefined;
         src?.setData?.(data);
         state.trackCount = data.features.filter((f) => f.properties.kind === 'cell').length;
@@ -510,7 +619,8 @@ function onTrackClick(e: {
 }
 
 export function refreshTracks(): void {
-    history.clear();
+    snaps = [];
+    backfillDone = false;
     if (mapRef) void refresh(mapRef);
 }
 
@@ -538,7 +648,8 @@ export function stopTracks(): void {
     }
     popup?.remove();
     popup = null;
-    history.clear();
+    snaps = [];
+    backfillDone = false;
     state.trackCount = 0;
     if (mapRef) {
         try { mapRef.off('click', TRACKS_CELL_ID, onTrackClick); } catch { /* ignore */ }

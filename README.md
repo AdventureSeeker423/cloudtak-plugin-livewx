@@ -13,7 +13,7 @@ Requires CloudTAK **13.45** or newer.
 - Transparency and a min-value **filter** slider (hide weak reflectivity / slow velocity).
 - Optional **watches and warnings** from `api.weather.gov` — nationwide, not scoped to the selected radar.
 - Optional **lightning** from Blitzortung — off by default; when on, strikes in the current map view show as lightning bolts that fade from white to yellow to orange to dark red over the strike lifetime (default 120s). The public websocket is **live only**; turning Lightning on does not backfill strikes from before that moment.
-- Optional **storm tracks** from IEM NEXRAD storm attributes — off by default; white 60-minute forecast line and hash marks every 15 minutes. CONUS uses the closest radar’s report when several sites see the same cell. A selected site shows only that radar’s cells inside its range. Client-side only (no TAK/CoT).
+- Optional **storm tracks** from IEM NEXRAD storm attributes — off by default. Past path is rebuilt from the last ~60 minutes of scans; the 60-minute forecast (15-minute marks) follows that observed motion, like a typical STI overlay. CONUS uses the closest radar when several sites see the same cell. A selected site shows only that radar’s cells inside its range. Client-side only (no TAK/CoT).
 - With a single radar selected, lightning is also limited to that site’s range.
 - Simple last-hour **replay** when IEM has archive frames.
 
