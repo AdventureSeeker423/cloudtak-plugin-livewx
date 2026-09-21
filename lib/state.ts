@@ -1,4 +1,4 @@
-import { reactive, ref } from 'vue';
+import { reactive } from 'vue';
 import { CONUS_SITE_ID, DEFAULT_FILTER, DEFAULT_OPACITY, STORAGE_KEY } from './constants.ts';
 import {
     MOSAIC_DEFAULT_PRODUCT_ID,
@@ -69,8 +69,6 @@ export const state = reactive<LiveWxState>({
     alertCount: 0,
     selectedAlert: '',
 });
-
-export const siteQuery = ref('');
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 

@@ -67,6 +67,69 @@ let pollTimer: ReturnType<typeof setInterval> | null = null;
 let mapRef: LiveWxMap | null = null;
 let popup: { remove: () => void } | null = null;
 
+const POPUP_STYLE_ID = 'livewx-alert-popup-style';
+
+function ensurePopupStyle(): void {
+    if (document.getElementById(POPUP_STYLE_ID)) return;
+    const el = document.createElement('style');
+    el.id = POPUP_STYLE_ID;
+    el.textContent = `
+.livewx-alert-popup .maplibregl-popup-content {
+    color: #1a1a1a;
+    background: #ffffff;
+    padding: 12px 32px 12px 12px;
+    border-radius: 8px;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+    font: 13px/1.45 system-ui, Segoe UI, sans-serif;
+}
+.livewx-alert-popup .maplibregl-popup-close-button {
+    color: #222222;
+    font-size: 18px;
+    padding: 4px 8px;
+}
+.livewx-alert-popup .maplibregl-popup-close-button:hover {
+    color: #000000;
+    background: transparent;
+}
+.livewx-alert-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.livewx-alert-popup.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.livewx-alert-popup.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+    border-top-color: #ffffff;
+}
+.livewx-alert-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.livewx-alert-popup.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.livewx-alert-popup.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+    border-bottom-color: #ffffff;
+}
+.livewx-alert-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+    border-right-color: #ffffff;
+}
+.livewx-alert-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+    border-left-color: #ffffff;
+}
+.livewx-alert-title {
+    color: #111111;
+    font-size: 15px;
+    font-weight: 700;
+}
+.livewx-alert-body {
+    color: #222222;
+    margin-top: 6px;
+}
+.livewx-alert-meta {
+    color: #444444;
+    margin-top: 6px;
+    font-size: 12px;
+}
+.livewx-alert-instruction {
+    color: #111111;
+    margin-top: 8px;
+    white-space: pre-wrap;
+}
+`;
+    document.head.appendChild(el);
+}
+
 function isWatchOrWarning(event: string): boolean {
     return WATCH_OR_WARNING.test(event.trim());
 }
@@ -167,16 +230,17 @@ async function showPopup(
     lngLat: { lng: number; lat: number },
     props: AlertProps,
 ): Promise<void> {
+    ensurePopupStyle();
     popup?.remove();
     const event = props.event ?? 'Alert';
     const headline = props.headline ?? '';
     const expires = props.expires ? `Expires ${props.expires}` : '';
     const instruction = props.instruction ?? '';
-    const html = `<div style="max-width:280px">
-        <strong>${escapeHtml(event)}</strong>
-        <div style="margin-top:4px">${escapeHtml(headline)}</div>
-        ${expires ? `<div style="margin-top:4px;opacity:.8">${escapeHtml(expires)}</div>` : ''}
-        ${instruction ? `<div style="margin-top:6px;white-space:pre-wrap">${escapeHtml(instruction)}</div>` : ''}
+    const html = `<div style="max-width:280px;color:#1a1a1a;background:#ffffff">
+        <div class="livewx-alert-title">${escapeHtml(event)}</div>
+        ${headline ? `<div class="livewx-alert-body">${escapeHtml(headline)}</div>` : ''}
+        ${expires ? `<div class="livewx-alert-meta">${escapeHtml(expires)}</div>` : ''}
+        ${instruction ? `<div class="livewx-alert-instruction">${escapeHtml(instruction)}</div>` : ''}
     </div>`;
     state.selectedAlert = [event, headline, expires].filter(Boolean).join(' — ');
 
@@ -193,7 +257,11 @@ async function showPopup(
         };
         const Popup = ml.Popup ?? ml.default?.Popup;
         if (!Popup) return;
-        popup = new Popup({ closeButton: true, maxWidth: '320px' })
+        popup = new Popup({
+            closeButton: true,
+            maxWidth: '320px',
+            className: 'livewx-alert-popup',
+        })
             .setLngLat(lngLat)
             .setHTML(html)
             .addTo(map);

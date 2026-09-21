@@ -107,3 +107,47 @@ export function groupedSites(query = ''): SiteGroup[] {
             sites: sites.sort((a, b) => a.place.localeCompare(b.place)),
         }));
 }
+
+function siteScore(site: RadarSite, q: string): number | null {
+    if (!q) return 50;
+    const id = site.id.toLowerCase();
+    const iem = toIemId(site.id).toLowerCase();
+    const place = site.place.toLowerCase();
+    const st = site.state.toLowerCase();
+    if (id === q || iem === q) return 1;
+    if (id.startsWith(q) || iem.startsWith(q)) return 2;
+    if (place.startsWith(q)) return 3;
+    if (place.includes(q)) return 4;
+    if (st === q || st.startsWith(q)) return 5;
+    if (id.includes(q) || iem.includes(q) || st.includes(q)) return 6;
+    return null;
+}
+
+/** Ranked site matches for the combobox. Empty query returns CONUS so mosaic stays one click away. */
+export function searchSites(query: string, limit = 20): RadarSite[] {
+    const q = query.trim().toLowerCase();
+    const ranked: Array<{ site: RadarSite; score: number }> = [];
+    const mosaicHit = !q
+        || 'conus'.startsWith(q)
+        || 'mosaic'.startsWith(q)
+        || 'nationwide'.startsWith(q)
+        || q === 'us';
+    if (mosaicHit) ranked.push({ site: CONUS_SITE, score: 0 });
+    if (!q) return ranked.map((r) => r.site);
+
+    for (const site of ALL_SITES) {
+        const score = siteScore(site, q);
+        if (score == null) continue;
+        ranked.push({ site, score });
+    }
+    ranked.sort((a, b) => a.score - b.score || a.site.place.localeCompare(b.site.place));
+    const seen = new Set<string>();
+    const out: RadarSite[] = [];
+    for (const { site } of ranked) {
+        if (seen.has(site.id)) continue;
+        seen.add(site.id);
+        out.push(site);
+        if (out.length >= limit) break;
+    }
+    return out;
+}

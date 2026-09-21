@@ -18,11 +18,13 @@ import { persist, setSite, state } from './state.ts';
 import {
     ensureFilterProtocol,
     fetchAvailableProducts,
+    fetchMosaicValidAt,
     fetchSiteScans,
     mosaicFrameLabel,
     mosaicLoopStamps,
     removeFilterProtocol,
     tileUrl,
+    ageLabel,
     type ScanFrame,
 } from './tiles.ts';
 
@@ -37,6 +39,7 @@ export const availableCodes = ref<string[] | null>(null);
 let frames: ScanFrame[] = [];
 export const replayFramesRef = ref<ScanFrame[]>([]);
 export const autoSiteId = ref<string | null>(null);
+export const liveValidAt = ref<number | null>(null);
 let styleHandler: (() => void) | null = null;
 let viewHandler: (() => void) | null = null;
 let lastSourceSig = '';
@@ -84,8 +87,8 @@ function statusText(): string {
         where = `${autoSiteId.value} close-up`;
     }
     const frame = state.replayIndex >= 0 && frames[state.replayIndex]
-        ? frames[state.replayIndex].label
-        : 'Live';
+        ? ageLabel(frames[state.replayIndex].at)
+        : (liveValidAt.value != null ? `Live · ${ageLabel(liveValidAt.value)}` : 'Live');
     return `${where} · ${product?.label ?? state.productId} · ${frame}`;
 }
 
@@ -194,14 +197,19 @@ async function loadFrames(): Promise<void> {
     if (isMosaic(state.siteId)) {
         const product = currentProduct();
         const loopable = product?.mosaicLayer === 'nexrad-n0q' || product?.mosaicLayer === 'nexrad-eet';
+        const now = Date.now();
         frames = loopable
-            ? mosaicLoopStamps().map((stamp) => ({
-                stamp,
-                label: mosaicFrameLabel(stamp),
-                at: 0,
-            }))
+            ? mosaicLoopStamps().map((stamp) => {
+                const mins = Number(/^m(\d{2})m$/.exec(stamp)?.[1] ?? 0);
+                return {
+                    stamp,
+                    label: mosaicFrameLabel(stamp),
+                    at: now - mins * 60_000,
+                };
+            })
             : [];
         replayFramesRef.value = frames;
+        liveValidAt.value = await fetchMosaicValidAt();
         return;
     }
     const product = currentProduct();
@@ -209,6 +217,7 @@ async function loadFrames(): Promise<void> {
     if (!product || !site) {
         frames = [];
         replayFramesRef.value = frames;
+        liveValidAt.value = null;
         return;
     }
     const end = new Date();
@@ -220,6 +229,7 @@ async function loadFrames(): Promise<void> {
         end.toISOString().replace(/\.\d{3}Z$/, 'Z'),
     );
     replayFramesRef.value = frames;
+    liveValidAt.value = frames.length ? frames[frames.length - 1].at : null;
 }
 
 function stopPlayTimer(): void {
@@ -235,6 +245,14 @@ function startRefresh(): void {
     refreshTimer = setInterval(() => {
         if (!state.overlayEnabled || state.replayIndex >= 0) return;
         cacheBust = Date.now();
+        if (isMosaic(state.siteId)) {
+            void fetchMosaicValidAt().then((at) => {
+                if (at) liveValidAt.value = at;
+                state.status = statusText();
+            });
+        } else if (frames.length) {
+            liveValidAt.value = frames[frames.length - 1].at;
+        }
         const map = mapOf();
         if (map) applyTiles(map);
         state.status = statusText();
@@ -390,7 +408,7 @@ export function applyAlerts(): void {
 }
 
 export async function setReplayIndex(index: number): Promise<void> {
-    if (index < 0 || !frames.length) {
+    if (!frames.length || index < 0 || index >= frames.length) {
         state.replayIndex = -1;
         cacheBust = Date.now();
         const map = mapOf();
@@ -398,7 +416,7 @@ export async function setReplayIndex(index: number): Promise<void> {
         state.status = statusText();
         return;
     }
-    state.replayIndex = Math.min(index, frames.length - 1);
+    state.replayIndex = index;
     const map = mapOf();
     if (map && state.overlayEnabled) applyTiles(map);
     state.status = statusText();

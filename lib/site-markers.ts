@@ -2,17 +2,29 @@ import type { PluginAPI } from '@tak-ps/cloudtak';
 import {
     SITES_CIRCLE_ID,
     SITES_LABEL_ID,
-    SITES_SELECTED_ID,
+    SITES_RANGE_FILL_ID,
+    SITES_RANGE_LINE_ID,
+    SITES_RANGE_SOURCE_ID,
     SITES_SOURCE_ID,
+    TDWR_RANGE_KM,
+    WSR88D_RANGE_KM,
 } from './constants.ts';
 import type { LiveWxMap } from './map-types.ts';
-import { allSites } from './sites.ts';
+import { allSites, findSite, isMosaic } from './sites.ts';
+import type { RadarSite } from './sites.ts';
 import { state } from './state.ts';
 
 type GeoSource = { setData?: (data: unknown) => void };
 
 let mapRef: LiveWxMap | null = null;
 let onPick: ((id: string) => void) | null = null;
+
+const EARTH_KM = 6371.0088;
+const RANGE_STEPS = 72;
+
+function emptyCollection() {
+    return { type: 'FeatureCollection' as const, features: [] };
+}
 
 function sitesCollection() {
     const selected = state.siteId;
@@ -36,6 +48,55 @@ function sitesCollection() {
     };
 }
 
+function rangeKm(site: RadarSite): number {
+    return site.type === 'tdwr' ? TDWR_RANGE_KM : WSR88D_RANGE_KM;
+}
+
+/** Geodesic ring around a site, in GeoJSON [lon, lat] order. */
+function rangeRing(lon: number, lat: number, radiusKm: number): number[][] {
+    const coords: number[][] = [];
+    const lat1 = lat * Math.PI / 180;
+    const lon1 = lon * Math.PI / 180;
+    const ang = radiusKm / EARTH_KM;
+    for (let i = 0; i <= RANGE_STEPS; i++) {
+        const brng = (i / RANGE_STEPS) * 2 * Math.PI;
+        const lat2 = Math.asin(
+            Math.sin(lat1) * Math.cos(ang)
+            + Math.cos(lat1) * Math.sin(ang) * Math.cos(brng),
+        );
+        const lon2 = lon1 + Math.atan2(
+            Math.sin(brng) * Math.sin(ang) * Math.cos(lat1),
+            Math.cos(ang) - Math.sin(lat1) * Math.sin(lat2),
+        );
+        let degLon = lon2 * 180 / Math.PI;
+        if (degLon > 180) degLon -= 360;
+        if (degLon < -180) degLon += 360;
+        coords.push([degLon, lat2 * 180 / Math.PI]);
+    }
+    return coords;
+}
+
+function rangeCollection() {
+    if (isMosaic(state.siteId)) return emptyCollection();
+    const site = findSite(state.siteId);
+    if (!site || site.type === 'mosaic') return emptyCollection();
+    const ring = rangeRing(site.lon, site.lat, rangeKm(site));
+    return {
+        type: 'FeatureCollection' as const,
+        features: [{
+            type: 'Feature' as const,
+            geometry: {
+                type: 'Polygon' as const,
+                coordinates: [ring],
+            },
+            properties: {
+                id: site.id,
+                rangeKm: rangeKm(site),
+            },
+        }],
+    };
+}
+
 function firstSymbolLayer(map: LiveWxMap): string | undefined {
     const layers = map.getStyle?.()?.layers ?? [];
     return layers.find((l) => l.type === 'symbol')?.id;
@@ -51,19 +112,37 @@ function ensureLayers(map: LiveWxMap): void {
         (map.getSource(SITES_SOURCE_ID) as GeoSource | undefined)?.setData?.(sitesCollection());
     }
 
+    if (!map.getSource(SITES_RANGE_SOURCE_ID)) {
+        map.addSource(SITES_RANGE_SOURCE_ID, {
+            type: 'geojson',
+            data: rangeCollection(),
+        });
+    } else {
+        (map.getSource(SITES_RANGE_SOURCE_ID) as GeoSource | undefined)?.setData?.(rangeCollection());
+    }
+
     const before = firstSymbolLayer(map);
 
-    if (!map.getLayer(SITES_SELECTED_ID)) {
+    if (!map.getLayer(SITES_RANGE_FILL_ID)) {
         map.addLayer({
-            id: SITES_SELECTED_ID,
-            type: 'circle',
-            source: SITES_SOURCE_ID,
-            filter: ['==', ['get', 'selected'], 'yes'],
+            id: SITES_RANGE_FILL_ID,
+            type: 'fill',
+            source: SITES_RANGE_SOURCE_ID,
             paint: {
-                'circle-radius': 9,
-                'circle-color': 'transparent',
-                'circle-stroke-width': 2.5,
-                'circle-stroke-color': '#f2c14e',
+                'fill-color': '#f2c14e',
+                'fill-opacity': 0.08,
+            },
+        }, before);
+    }
+    if (!map.getLayer(SITES_RANGE_LINE_ID)) {
+        map.addLayer({
+            id: SITES_RANGE_LINE_ID,
+            type: 'line',
+            source: SITES_RANGE_SOURCE_ID,
+            paint: {
+                'line-color': '#f2c14e',
+                'line-width': 2,
+                'line-opacity': 0.95,
             },
         }, before);
     }
@@ -84,8 +163,18 @@ function ensureLayers(map: LiveWxMap): void {
                     '#f59f00',
                     '#74c0fc',
                 ],
-                'circle-stroke-width': 1.25,
-                'circle-stroke-color': '#0f172a',
+                'circle-stroke-width': [
+                    'case',
+                    ['==', ['get', 'selected'], 'yes'],
+                    2.25,
+                    1.25,
+                ],
+                'circle-stroke-color': [
+                    'case',
+                    ['==', ['get', 'selected'], 'yes'],
+                    '#f2c14e',
+                    '#0f172a',
+                ],
             },
         }, before);
     }
@@ -114,7 +203,9 @@ function ensureLayers(map: LiveWxMap): void {
 function removeLayers(map: LiveWxMap): void {
     try { if (map.getLayer(SITES_LABEL_ID)) map.removeLayer(SITES_LABEL_ID); } catch { /* ignore */ }
     try { if (map.getLayer(SITES_CIRCLE_ID)) map.removeLayer(SITES_CIRCLE_ID); } catch { /* ignore */ }
-    try { if (map.getLayer(SITES_SELECTED_ID)) map.removeLayer(SITES_SELECTED_ID); } catch { /* ignore */ }
+    try { if (map.getLayer(SITES_RANGE_LINE_ID)) map.removeLayer(SITES_RANGE_LINE_ID); } catch { /* ignore */ }
+    try { if (map.getLayer(SITES_RANGE_FILL_ID)) map.removeLayer(SITES_RANGE_FILL_ID); } catch { /* ignore */ }
+    try { if (map.getSource(SITES_RANGE_SOURCE_ID)) map.removeSource(SITES_RANGE_SOURCE_ID); } catch { /* ignore */ }
     try { if (map.getSource(SITES_SOURCE_ID)) map.removeSource(SITES_SOURCE_ID); } catch { /* ignore */ }
 }
 
@@ -139,6 +230,7 @@ function onLeave(): void {
 export function refreshSiteMarkers(): void {
     if (!mapRef) return;
     (mapRef.getSource(SITES_SOURCE_ID) as GeoSource | undefined)?.setData?.(sitesCollection());
+    (mapRef.getSource(SITES_RANGE_SOURCE_ID) as GeoSource | undefined)?.setData?.(rangeCollection());
 }
 
 export function startSiteMarkers(api: PluginAPI, pick: (id: string) => void): void {

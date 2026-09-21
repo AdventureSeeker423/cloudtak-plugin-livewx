@@ -9,8 +9,10 @@ export const ALERT_FILL_ID = 'livewx-alerts-fill';
 export const ALERT_LINE_ID = 'livewx-alerts-line';
 export const SITES_SOURCE_ID = 'livewx-sites-source';
 export const SITES_CIRCLE_ID = 'livewx-sites-circle';
-export const SITES_SELECTED_ID = 'livewx-sites-selected';
 export const SITES_LABEL_ID = 'livewx-sites-label';
+export const SITES_RANGE_SOURCE_ID = 'livewx-sites-range-source';
+export const SITES_RANGE_FILL_ID = 'livewx-sites-range-fill';
+export const SITES_RANGE_LINE_ID = 'livewx-sites-range-line';
 
 export const CONUS_SITE_ID = 'CONUS';
 export const IEM_TMS_BASE = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0';
@@ -31,3 +33,8 @@ export const MOSAIC_MAXZOOM = 8;
 export const RIDGE_MAXZOOM = 10;
 /** At this zoom and above, CONUS mosaic switches to the nearest WSR-88D. */
 export const MOSAIC_CLOSEUP_ZOOM = 7;
+
+/** Standard 0.5° base reflectivity coverage (124 nmi). */
+export const WSR88D_RANGE_KM = 230;
+/** TDWR reflectivity / Doppler range (48 nmi). */
+export const TDWR_RANGE_KM = 90;

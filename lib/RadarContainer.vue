@@ -44,36 +44,57 @@
         >
             Radar site
         </label>
-        <input
-            id='livewx-site-search'
-            v-model='siteQuery'
-            class='form-control form-control-sm mb-2'
-            type='search'
-            placeholder='Search site, city, or state'
+        <div
+            ref='siteComboEl'
+            class='site-combo mb-3'
         >
-        <select
-            id='livewx-site'
-            class='form-select form-select-sm mb-3'
-            :value='state.siteId'
-            @change='onSite'
-        >
-            <option :value='CONUS_SITE_ID'>
-                CONUS Mosaic
-            </option>
-            <optgroup
-                v-for='group in siteGroups'
-                :key='group.state'
-                :label='group.state'
+            <input
+                id='livewx-site-search'
+                class='form-control form-control-sm'
+                type='search'
+                autocomplete='off'
+                role='combobox'
+                aria-autocomplete='list'
+                aria-controls='livewx-site-list'
+                :aria-expanded='siteOpen ? "true" : "false"'
+                :placeholder='siteOpen ? "Search site, city, or state" : selectedSiteLabel'
+                :value='siteOpen ? siteDraft : selectedSiteLabel'
+                @focus='onSiteFocus'
+                @input='onSiteDraft'
+                @keydown='onSiteKey'
             >
-                <option
-                    v-for='site in group.sites'
+            <div
+                v-if='siteOpen'
+                id='livewx-site-list'
+                class='site-menu'
+                role='listbox'
+            >
+                <button
+                    v-for='(site, idx) in siteMatches'
                     :key='site.id'
-                    :value='site.id'
+                    class='site-option'
+                    :class='{ active: idx === siteHighlight }'
+                    type='button'
+                    role='option'
+                    :aria-selected='idx === siteHighlight ? "true" : "false"'
+                    @mousedown.prevent='pickSite(site.id)'
                 >
                     {{ siteLabel(site) }}
-                </option>
-            </optgroup>
-        </select>
+                </button>
+                <div
+                    v-if='!siteDraft.trim()'
+                    class='site-empty'
+                >
+                    Type a city, state, or site ID
+                </div>
+                <div
+                    v-else-if='!siteMatches.length'
+                    class='site-empty'
+                >
+                    No matching sites
+                </div>
+            </div>
+        </div>
 
         <div
             class='form-check form-switch'
@@ -212,20 +233,45 @@
                 Live
             </button>
         </div>
-        <input
-            class='form-range mb-1'
-            type='range'
-            min='-1'
-            step='1'
-            :max='Math.max(frames.length - 1, 0)'
-            :value='state.replayIndex'
-            :disabled='!frames.length'
-            @input='onReplay'
-            @wheel.prevent='onReplayWheel'
-        >
-        <p class='text-secondary small mb-3'>
-            {{ frames.length ? (state.replayIndex < 0 ? 'Live' : frames[state.replayIndex]?.label) : 'No archive frames for this product' }}
-        </p>
+        <div class='replay-wrap mb-3'>
+            <input
+                class='form-range mb-0'
+                type='range'
+                min='0'
+                step='1'
+                :max='replaySliderMax'
+                :value='replaySliderValue'
+                :disabled='!frames.length'
+                @input='onReplay'
+                @wheel.prevent='onReplayWheel'
+            >
+            <div class='replay-ticks'>
+                <span
+                    v-for='tick in replayTicks'
+                    :key='tick.key'
+                    class='replay-tick'
+                    :class='{
+                        "replay-tick-start": tick.align === "start",
+                        "replay-tick-end": tick.align === "end",
+                    }'
+                    :style='{ left: tick.pct + "%" }'
+                >
+                    {{ tick.label }}
+                </span>
+            </div>
+            <p
+                v-if='state.overlayEnabled && isLive'
+                class='small mb-0 mt-2'
+            >
+                Live image · {{ liveAgeText }}
+            </p>
+            <p
+                v-else
+                class='text-secondary small mb-0 mt-2'
+            >
+                {{ replayCaption }}
+            </p>
+        </div>
 
         <p
             class='small mb-0'
@@ -237,9 +283,8 @@
 </template>
 
 <script setup lang='ts'>
-import { computed } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import type { PluginAPI } from '@tak-ps/cloudtak';
-import { CONUS_SITE_ID } from './constants.ts';
 import {
     autoSiteId,
     currentProduct,
@@ -250,6 +295,7 @@ import {
     applySiteMarkers,
     availableCodes,
     goLive,
+    liveValidAt,
     replayFramesRef,
     setOverlayEnabled,
     setReplayIndex,
@@ -257,14 +303,24 @@ import {
     visibleProducts,
 } from './radar.ts';
 import { groupedOptions, filterMax, filterUnit } from './products.ts';
-import { groupedSites, isMosaic, siteLabel } from './sites.ts';
-import { setAlertsEnabled, setFilter, setOpacity, setProduct, setSite, setSitesOnMap, siteQuery, state } from './state.ts';
+import { findSite, isMosaic, searchSites, siteLabel } from './sites.ts';
+import { setAlertsEnabled, setFilter, setOpacity, setProduct, setSite, setSitesOnMap, state } from './state.ts';
+import { ageLabel, shortAgeLabel } from './tiles.ts';
 
 defineProps<{
     api: PluginAPI;
 }>();
 
-const siteGroups = computed(() => groupedSites(siteQuery.value));
+const siteComboEl = ref<HTMLElement | null>(null);
+const siteOpen = ref(false);
+const siteDraft = ref('');
+const siteHighlight = ref(0);
+const selectedSiteLabel = computed(() => {
+    const site = findSite(state.siteId);
+    return site ? siteLabel(site) : state.siteId;
+});
+const siteMatches = computed(() => searchSites(siteDraft.value));
+
 const productGroups = computed(() => {
     void availableCodes.value;
     return groupedOptions(visibleProducts());
@@ -277,6 +333,74 @@ const filterLabel = computed(() => {
     if (kind === 'other') return 'n/a';
     if (state.filter <= 0) return `off`;
     return `≥ ${state.filter} ${filterUnit(kind)}`;
+});
+
+const nowMs = ref(Date.now());
+let ageTimer: ReturnType<typeof setInterval> | undefined;
+onMounted(() => {
+    ageTimer = setInterval(() => {
+        nowMs.value = Date.now();
+    }, 15_000);
+    document.addEventListener('mousedown', onSiteDocDown);
+});
+onUnmounted(() => {
+    if (ageTimer) clearInterval(ageTimer);
+    document.removeEventListener('mousedown', onSiteDocDown);
+});
+
+const isLive = computed(() => state.replayIndex < 0);
+const replaySliderMax = computed(() => Math.max(frames.value.length, 0));
+const replaySliderValue = computed(() => (
+    isLive.value ? replaySliderMax.value : state.replayIndex
+));
+const liveAgeText = computed(() => {
+    void nowMs.value;
+    if (liveValidAt.value == null) return 'age unknown';
+    return ageLabel(liveValidAt.value, nowMs.value);
+});
+const replayCaption = computed(() => {
+    void nowMs.value;
+    if (!frames.value.length) return 'No archive frames for this product';
+    if (isLive.value) return liveValidAt.value != null
+        ? `Live · ${ageLabel(liveValidAt.value, nowMs.value)}`
+        : 'Live';
+    const frame = frames.value[state.replayIndex];
+    return frame ? ageLabel(frame.at, nowMs.value) : 'Replay';
+});
+const replayTicks = computed(() => {
+    const list = frames.value;
+    const now = nowMs.value;
+    if (!list.length) {
+        return [{ key: 'live', pct: 100, label: 'Live', align: 'end' as const }];
+    }
+    const maxIdx = list.length;
+    const ticks: Array<{ key: string; pct: number; label: string; align: 'start' | 'center' | 'end' }> = [];
+    const used = new Set<number>();
+    const push = (idx: number, label: string, align: 'start' | 'center' | 'end'): void => {
+        if (used.has(idx)) return;
+        used.add(idx);
+        ticks.push({
+            key: `${idx}-${label}`,
+            pct: (idx / maxIdx) * 100,
+            label,
+            align,
+        });
+    };
+    push(0, shortAgeLabel(list[0].at, now), 'start');
+    for (const target of [45, 30, 15]) {
+        let best = -1;
+        let bestD = 5;
+        for (let i = 1; i < list.length; i++) {
+            const d = Math.abs(Math.round((now - list[i].at) / 60_000) - target);
+            if (d < bestD) {
+                bestD = d;
+                best = i;
+            }
+        }
+        if (best >= 0) push(best, shortAgeLabel(list[best].at, now), 'center');
+    }
+    push(maxIdx, 'Live', 'end');
+    return ticks;
 });
 
 function onOverlayToggle(ev: Event): void {
@@ -298,9 +422,62 @@ function onOpacityWheel(ev: WheelEvent): void {
     applyOpacity();
 }
 
-function onSite(ev: Event): void {
-    setSite((ev.target as HTMLSelectElement).value);
+function closeSiteMenu(): void {
+    siteOpen.value = false;
+    siteDraft.value = '';
+    siteHighlight.value = 0;
+}
+
+function onSiteDocDown(ev: MouseEvent): void {
+    const root = siteComboEl.value;
+    if (!root || root.contains(ev.target as Node)) return;
+    closeSiteMenu();
+}
+
+function onSiteFocus(): void {
+    siteOpen.value = true;
+    siteDraft.value = '';
+    siteHighlight.value = 0;
+}
+
+function onSiteDraft(ev: Event): void {
+    siteOpen.value = true;
+    siteDraft.value = (ev.target as HTMLInputElement).value;
+    siteHighlight.value = 0;
+}
+
+function pickSite(id: string): void {
+    setSite(id);
     void applyRadarSettings();
+    closeSiteMenu();
+}
+
+function onSiteKey(ev: KeyboardEvent): void {
+    const matches = siteMatches.value;
+    if (ev.key === 'ArrowDown') {
+        ev.preventDefault();
+        siteOpen.value = true;
+        if (!matches.length) return;
+        siteHighlight.value = (siteHighlight.value + 1) % matches.length;
+        return;
+    }
+    if (ev.key === 'ArrowUp') {
+        ev.preventDefault();
+        siteOpen.value = true;
+        if (!matches.length) return;
+        siteHighlight.value = (siteHighlight.value - 1 + matches.length) % matches.length;
+        return;
+    }
+    if (ev.key === 'Enter') {
+        ev.preventDefault();
+        const site = matches[siteHighlight.value] ?? matches[0];
+        if (site) pickSite(site.id);
+        return;
+    }
+    if (ev.key === 'Escape') {
+        ev.preventDefault();
+        closeSiteMenu();
+    }
 }
 
 function onSitesToggle(ev: Event): void {
@@ -343,7 +520,8 @@ function onReplay(ev: Event): void {
 
 function onReplayWheel(ev: WheelEvent): void {
     if (!frames.value.length) return;
-    void setReplayIndex(state.replayIndex + wheelStep(ev));
+    const cur = isLive.value ? frames.value.length : state.replayIndex;
+    void setReplayIndex(cur + wheelStep(ev));
 }
 </script>
 
@@ -357,5 +535,66 @@ function onReplayWheel(ev: WheelEvent): void {
     letter-spacing: 0.04em;
     opacity: 0.7;
     margin-bottom: 8px;
+}
+.replay-wrap {
+    position: relative;
+}
+.replay-ticks {
+    position: relative;
+    height: 16px;
+    margin-top: 2px;
+}
+.replay-tick {
+    position: absolute;
+    top: 0;
+    font-size: 10px;
+    line-height: 16px;
+    color: #adb5bd;
+    transform: translateX(-50%);
+    white-space: nowrap;
+}
+.replay-tick-start {
+    transform: translateX(0);
+}
+.replay-tick-end {
+    transform: translateX(-100%);
+}
+.site-combo {
+    position: relative;
+}
+.site-menu {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 30;
+    max-height: 240px;
+    overflow-y: auto;
+    margin-top: 2px;
+    padding: 4px 0;
+    background: #212529;
+    border: 1px solid #495057;
+    border-radius: 4px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+}
+.site-option {
+    display: block;
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: #e9ecef;
+    text-align: left;
+    font-size: 13px;
+    line-height: 1.3;
+    padding: 6px 10px;
+}
+.site-option:hover,
+.site-option.active {
+    background: #375a7f;
+    color: #ffffff;
+}
+.site-empty {
+    padding: 8px 10px;
+    font-size: 12px;
+    color: #adb5bd;
 }
 </style>

@@ -304,3 +304,39 @@ export function mosaicFrameLabel(stamp: string): string {
     if (match) return `${Number(match[1])} min ago`;
     return stamp;
 }
+
+export function minutesAgo(at: number, now = Date.now()): number {
+    if (!Number.isFinite(at) || at <= 0) return 0;
+    return Math.max(0, Math.round((now - at) / 60_000));
+}
+
+export function ageLabel(at: number, now = Date.now()): string {
+    const min = minutesAgo(at, now);
+    if (min < 1) return 'just now';
+    if (min === 1) return '1 min ago';
+    return `${min} min ago`;
+}
+
+export function shortAgeLabel(at: number, now = Date.now()): string {
+    const min = minutesAgo(at, now);
+    if (min < 1) return 'now';
+    return `${min}m`;
+}
+
+export async function fetchMosaicValidAt(): Promise<number | null> {
+    try {
+        const res = await fetch(`${IEM_JSON_BASE}/tms.py`);
+        if (!res.ok) return null;
+        const body = await res.json() as {
+            services?: Array<{ id?: string; utc_valid?: string; layername?: string }>;
+        };
+        const services = body.services ?? [];
+        const prefer = services.find((s) => /n0q/i.test(`${s.id ?? ''} ${s.layername ?? ''}`))
+            ?? services[0];
+        if (!prefer?.utc_valid) return null;
+        const at = Date.parse(prefer.utc_valid);
+        return Number.isNaN(at) ? null : at;
+    } catch {
+        return null;
+    }
+}
