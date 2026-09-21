@@ -319,6 +319,14 @@ export function ageLabel(at: number, now = Date.now()): string {
     return `${min} Min Ago`;
 }
 
+export function radarUpdatedLabel(at: number | null, now = Date.now()): string {
+    if (at == null || !Number.isFinite(at) || at <= 0) return 'Radar Age Unknown';
+    const min = minutesAgo(at, now);
+    if (min < 1) return 'Radar Updated Just Now';
+    if (min === 1) return 'Radar Updated 1 Min Ago';
+    return `Radar Updated ${min} Min Ago`;
+}
+
 export function shortAgeLabel(at: number, now = Date.now()): string {
     const min = minutesAgo(at, now);
     if (min < 1) return 'now';

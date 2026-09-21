@@ -16,4 +16,7 @@ export type LiveWxMap = {
     once?: (type: string, handler: () => void) => void;
     isStyleLoaded?: () => boolean;
     queryRenderedFeatures?: (point: unknown, options?: object) => unknown[];
+    addControl?: (control: object, position?: string) => void;
+    removeControl?: (control: object) => void;
+    getContainer?: () => HTMLElement;
 };

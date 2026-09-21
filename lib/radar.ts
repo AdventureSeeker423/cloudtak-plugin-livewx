@@ -1,6 +1,7 @@
 import { ref } from 'vue';
 import type { PluginAPI } from '@tak-ps/cloudtak';
 import { startAlerts, stopAlerts } from './alerts.ts';
+import { attachRadarAgeControl, detachRadarAgeControl, setRadarAge } from './age-control.ts';
 import {
     MOSAIC_MAXZOOM,
     RADAR_LAYER_ID,
@@ -81,8 +82,19 @@ function currentStamp(): string {
     return frames[state.replayIndex].stamp;
 }
 
+function currentImageAt(): number | null {
+    if (state.replayIndex >= 0 && frames[state.replayIndex]) {
+        return frames[state.replayIndex].at;
+    }
+    return liveValidAt.value;
+}
+
 function statusText(): string {
-    if (!state.overlayEnabled) return 'Overlay Off';
+    if (!state.overlayEnabled) {
+        setRadarAge(null, false);
+        return 'Overlay Off';
+    }
+    setRadarAge(currentImageAt(), true);
     const product = currentProduct();
     const site = findSite(state.siteId);
     const where = site ? (isMosaic(site.id) ? 'CONUS mosaic' : site.id) : state.siteId;
@@ -261,6 +273,7 @@ function onStyle(): void {
     if (!map) return;
     lastSourceSig = '';
     if (state.overlayEnabled) ensureRadarLayer(map);
+    attachRadarAgeControl(map);
     if (state.alertsEnabled && apiRef) startAlerts(apiRef);
     if (state.sitesOnMap && apiRef) startSiteMarkers(apiRef, onSitePicked);
 }
@@ -289,6 +302,7 @@ export async function init(api: PluginAPI): Promise<void> {
     if (map) {
         styleHandler = onStyle;
         map.on('style.load', styleHandler);
+        attachRadarAgeControl(map);
     }
     if (state.alertsEnabled) startAlerts(api);
     if (state.sitesOnMap) startSiteMarkers(api, onSitePicked);
@@ -313,6 +327,7 @@ export function destroy(): void {
         }
         removeRadarLayer(map);
     }
+    detachRadarAgeControl();
     styleHandler = null;
     apiRef = null;
     state.overlayEnabled = false;
@@ -329,13 +344,17 @@ export async function setOverlayEnabled(enabled: boolean): Promise<void> {
             refreshTimer = null;
         }
         if (map) removeRadarLayer(map);
+        setRadarAge(null, false);
         state.status = 'Overlay Off';
         return;
     }
     cacheBust = Date.now();
     await loadAvailable();
     await loadFrames();
-    if (map) ensureRadarLayer(map);
+    if (map) {
+        ensureRadarLayer(map);
+        attachRadarAgeControl(map);
+    }
     startRefresh();
     state.status = statusText();
 }
