@@ -68,9 +68,11 @@ export function setRadarAge(at: number | null, show: boolean): void {
 }
 
 function placeUnderScale(): void {
-    const group = el?.parentElement;
+    const node = el;
+    if (!node) return;
+    const group = node.parentElement;
     if (!group) return;
-    if (group.lastElementChild !== el) group.appendChild(el);
+    if (group.lastElementChild !== node) group.appendChild(node);
 }
 
 export function attachRadarAgeControl(map: LiveWxMap): void {
