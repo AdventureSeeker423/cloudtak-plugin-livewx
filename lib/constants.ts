@@ -7,6 +7,10 @@ export const RADAR_LAYER_ID = 'livewx-radar-layer';
 export const ALERT_SOURCE_ID = 'livewx-alerts-source';
 export const ALERT_FILL_ID = 'livewx-alerts-fill';
 export const ALERT_LINE_ID = 'livewx-alerts-line';
+export const SITES_SOURCE_ID = 'livewx-sites-source';
+export const SITES_CIRCLE_ID = 'livewx-sites-circle';
+export const SITES_SELECTED_ID = 'livewx-sites-selected';
+export const SITES_LABEL_ID = 'livewx-sites-label';
 
 export const CONUS_SITE_ID = 'CONUS';
 export const IEM_TMS_BASE = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0';

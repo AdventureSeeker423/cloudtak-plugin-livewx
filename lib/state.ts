@@ -13,6 +13,7 @@ export interface PersistedSettings {
     opacity: number;
     filter: number;
     alertsEnabled: boolean;
+    sitesOnMap: boolean;
 }
 
 export interface LiveWxState extends PersistedSettings {
@@ -32,6 +33,7 @@ function load(): PersistedSettings {
         opacity: DEFAULT_OPACITY,
         filter: DEFAULT_FILTER,
         alertsEnabled: false,
+        sitesOnMap: false,
     };
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
@@ -43,6 +45,7 @@ function load(): PersistedSettings {
             opacity: clamp(Number(parsed.opacity), 0, 1, defaults.opacity),
             filter: clamp(Number(parsed.filter), 0, 75, defaults.filter),
             alertsEnabled: Boolean(parsed.alertsEnabled),
+            sitesOnMap: Boolean(parsed.sitesOnMap),
         };
     } catch {
         return defaults;
@@ -76,6 +79,7 @@ export function persist(): void {
         opacity: state.opacity,
         filter: state.filter,
         alertsEnabled: state.alertsEnabled,
+        sitesOnMap: state.sitesOnMap,
     };
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
@@ -115,5 +119,10 @@ export function setFilter(filter: number): void {
 
 export function setAlertsEnabled(enabled: boolean): void {
     state.alertsEnabled = enabled;
+    persist();
+}
+
+export function setSitesOnMap(enabled: boolean): void {
+    state.sitesOnMap = enabled;
     persist();
 }

@@ -5,8 +5,9 @@ import { RADAR_LAYER_ID, RADAR_SOURCE_ID, REFRESH_MS } from './constants.ts';
 import type { LiveWxMap } from './map-types.ts';
 import { FALLBACK_SITE_CODES, getProduct, mosaicProducts, productsForSite, siteCode } from './products.ts';
 import type { RadarProduct } from './products.ts';
+import { refreshSiteMarkers, startSiteMarkers, stopSiteMarkers } from './site-markers.ts';
 import { findSite, isMosaic, toIemId } from './sites.ts';
-import { persist, state } from './state.ts';
+import { persist, setSite, state } from './state.ts';
 import {
     ensureFilterProtocol,
     fetchAvailableProducts,
@@ -190,9 +191,27 @@ function startRefresh(): void {
 
 function onStyle(): void {
     const map = mapOf();
-    if (!map || !state.overlayEnabled) return;
-    ensureRadarLayer(map);
-    if (state.alertsEnabled) startAlerts(apiRef!);
+    if (!map) return;
+    if (state.overlayEnabled) ensureRadarLayer(map);
+    if (state.alertsEnabled && apiRef) startAlerts(apiRef);
+    if (state.sitesOnMap && apiRef) startSiteMarkers(apiRef, onSitePicked);
+}
+
+function onSitePicked(id: string): void {
+    setSite(id);
+    void applyRadarSettings();
+    refreshSiteMarkers();
+}
+
+export function applySiteMarkers(): void {
+    persist();
+    if (!apiRef) return;
+    if (state.sitesOnMap) {
+        startSiteMarkers(apiRef, onSitePicked);
+        refreshSiteMarkers();
+    } else {
+        stopSiteMarkers();
+    }
 }
 
 export async function init(api: PluginAPI): Promise<void> {
@@ -204,6 +223,7 @@ export async function init(api: PluginAPI): Promise<void> {
         map.on('style.load', styleHandler);
     }
     if (state.alertsEnabled) startAlerts(api);
+    if (state.sitesOnMap) startSiteMarkers(api, onSitePicked);
 }
 
 export function destroy(): void {
@@ -213,6 +233,7 @@ export function destroy(): void {
         refreshTimer = null;
     }
     stopAlerts();
+    stopSiteMarkers();
     const map = mapOf();
     if (map) {
         if (styleHandler) {
@@ -249,6 +270,7 @@ export async function setOverlayEnabled(enabled: boolean): Promise<void> {
 
 export async function applyRadarSettings(): Promise<void> {
     persist();
+    refreshSiteMarkers();
     if (!state.overlayEnabled) {
         state.status = statusText();
         return;

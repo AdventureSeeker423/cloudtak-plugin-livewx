@@ -58,6 +58,20 @@
             </optgroup>
         </select>
 
+        <div class="form-check form-switch" :class="state.sitesOnMap ? 'mb-1' : 'mb-3'">
+            <input
+                id="livewx-sites"
+                class="form-check-input"
+                type="checkbox"
+                :checked="state.sitesOnMap"
+                @change="onSitesToggle"
+            >
+            <label class="form-check-label" for="livewx-sites">Show radar sites on map</label>
+        </div>
+        <p class="text-secondary small mb-3" v-if="state.sitesOnMap">
+            WSR-88D in blue, TDWR in orange. Click a site to select it.
+        </p>
+
         <label class="form-label mb-1" for="livewx-product">Data type</label>
         <select
             id="livewx-product"
@@ -151,6 +165,7 @@ import {
     applyFilter,
     applyOpacity,
     applyRadarSettings,
+    applySiteMarkers,
     availableCodes,
     goLive,
     replayFramesRef,
@@ -161,7 +176,7 @@ import {
 } from './radar.ts';
 import { groupedOptions, filterMax, filterUnit } from './products.ts';
 import { groupedSites, isMosaic, siteLabel } from './sites.ts';
-import { setAlertsEnabled, setFilter, setOpacity, setProduct, setSite, siteQuery, state } from './state.ts';
+import { setAlertsEnabled, setFilter, setOpacity, setProduct, setSite, setSitesOnMap, siteQuery, state } from './state.ts';
 
 defineProps<{
     api: PluginAPI;
@@ -196,6 +211,11 @@ function onOpacity(ev: Event): void {
 function onSite(ev: Event): void {
     setSite((ev.target as HTMLSelectElement).value);
     void applyRadarSettings();
+}
+
+function onSitesToggle(ev: Event): void {
+    setSitesOnMap((ev.target as HTMLInputElement).checked);
+    applySiteMarkers();
 }
 
 function onProduct(ev: Event): void {
