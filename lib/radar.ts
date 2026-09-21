@@ -9,6 +9,12 @@ import {
     REFRESH_MS,
     RIDGE_MAXZOOM,
 } from './constants.ts';
+import {
+    applyLightning,
+    destroyLightning,
+    initLightning,
+    restoreLightningLayers,
+} from './lightning.ts';
 import type { LiveWxMap } from './map-types.ts';
 import {
     FALLBACK_SITE_CODES,
@@ -22,6 +28,7 @@ import type { RadarProduct } from './products.ts';
 import { refreshSiteMarkers, startSiteMarkers, stopSiteMarkers } from './site-markers.ts';
 import { findSite, isMosaic, toIemId } from './sites.ts';
 import { persist, setSite, state } from './state.ts';
+import { syncSidebarTheme } from './theme.ts';
 import {
     ensureFilterProtocol,
     fetchAvailableProducts,
@@ -276,6 +283,7 @@ function onStyle(): void {
     attachRadarAgeControl(map);
     if (state.alertsEnabled && apiRef) startAlerts(apiRef);
     if (state.sitesOnMap && apiRef) startSiteMarkers(apiRef, onSitePicked);
+    restoreLightningLayers();
 }
 
 function onSitePicked(id: string): void {
@@ -298,6 +306,7 @@ export function applySiteMarkers(): void {
 export async function init(api: PluginAPI): Promise<void> {
     apiRef = api;
     protocolOn = await ensureFilterProtocol();
+    initLightning(api);
     const map = mapOf();
     if (map) {
         styleHandler = onStyle;
@@ -306,6 +315,8 @@ export async function init(api: PluginAPI): Promise<void> {
     }
     if (state.alertsEnabled) startAlerts(api);
     if (state.sitesOnMap) startSiteMarkers(api, onSitePicked);
+    if (state.lightningEnabled) applyLightning();
+    syncSidebarTheme();
 }
 
 export function destroy(): void {
@@ -320,6 +331,7 @@ export function destroy(): void {
     }
     stopAlerts();
     stopSiteMarkers();
+    destroyLightning();
     const map = mapOf();
     if (map) {
         if (styleHandler) {
@@ -396,6 +408,11 @@ export function applyAlerts(): void {
     if (!apiRef) return;
     if (state.alertsEnabled) startAlerts(apiRef);
     else stopAlerts();
+}
+
+export function applyLightningToggle(): void {
+    persist();
+    applyLightning();
 }
 
 export async function setReplayIndex(index: number): Promise<void> {

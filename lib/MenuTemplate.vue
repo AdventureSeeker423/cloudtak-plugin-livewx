@@ -66,7 +66,8 @@ import {
 } from '@tabler/icons-vue';
 
 import { useRouter } from 'vue-router';
-import { computed } from 'vue';
+import { computed, onMounted } from 'vue';
+import { syncSidebarTheme } from './theme.ts';
 
 const router = useRouter();
 
@@ -115,18 +116,23 @@ const backType = computed(() => {
     }
     return 'back';
 });
+
+onMounted(() => {
+    syncSidebarTheme();
+});
 </script>
 
 <style scoped>
 .livewx-shell {
-    color: var(--tblr-navbar-color, var(--tblr-body-color, inherit));
-    background: var(--tblr-navbar-bg, var(--tblr-bg-surface, transparent));
-    border-color: var(--tblr-navbar-border-color, var(--tblr-border-color, transparent));
+    color: var(--livewx-fg, var(--cloudtak-surface-color, inherit));
+    background: var(--livewx-bg, var(--cloudtak-surface-bg, var(--cloudtak-panel-bg, transparent))) !important;
+    border-color: var(--livewx-border, var(--cloudtak-surface-border, transparent));
+    box-shadow: none;
 }
 .livewx-shell :deep(.card-header) {
     color: inherit;
-    background: transparent;
-    border-color: var(--tblr-navbar-border-color, var(--tblr-border-color, transparent));
+    background: transparent !important;
+    border-color: var(--livewx-border, var(--cloudtak-surface-border, var(--tblr-border-color, transparent)));
 }
 .livewx-shell :deep(.card-body) {
     background: transparent;

@@ -1,4 +1,5 @@
 import type { LiveWxMap } from './map-types.ts';
+import { SURFACE_BG, SURFACE_BORDER, SURFACE_FG, syncSidebarTheme } from './theme.ts';
 import { radarUpdatedLabel } from './tiles.ts';
 
 const STYLE_ID = 'livewx-age-control-style';
@@ -23,9 +24,9 @@ function ensureStyle(): void {
     pointer-events: none;
     user-select: none;
     font: 12px/1.3 var(--tblr-font-sans-serif, system-ui, Segoe UI, sans-serif);
-    color: var(--tblr-navbar-color, var(--tblr-body-color, inherit));
-    background: var(--tblr-navbar-bg, var(--tblr-bg-surface, Canvas));
-    border: 1px solid var(--tblr-navbar-border-color, var(--tblr-border-color, rgba(127, 127, 127, 0.35)));
+    color: ${SURFACE_FG};
+    background: ${SURFACE_BG};
+    border: 1px solid ${SURFACE_BORDER};
     border-radius: 4px;
     box-shadow: var(--tblr-box-shadow, 0 1px 4px rgba(0, 0, 0, 0.2));
     white-space: nowrap;
@@ -66,9 +67,16 @@ export function setRadarAge(at: number | null, show: boolean): void {
     paint();
 }
 
+function placeUnderScale(): void {
+    const group = el?.parentElement;
+    if (!group) return;
+    if (group.lastElementChild !== el) group.appendChild(el);
+}
+
 export function attachRadarAgeControl(map: LiveWxMap): void {
     if (mapRef === map && el) {
         paint();
+        placeUnderScale();
         return;
     }
     detachRadarAgeControl();
@@ -97,12 +105,17 @@ export function attachRadarAgeControl(map: LiveWxMap): void {
         if (host) {
             el.style.position = 'absolute';
             el.style.right = '10px';
-            el.style.bottom = '28px';
+            el.style.bottom = '8px';
             el.style.zIndex = '10';
             host.appendChild(el);
         }
+    } else {
+        // MapLibre prepends bottom-right controls, which would sit above the scale.
+        placeUnderScale();
+        requestAnimationFrame(placeUnderScale);
     }
     if (visible) startTick();
+    syncSidebarTheme();
 }
 
 export function detachRadarAgeControl(): void {

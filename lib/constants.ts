@@ -12,6 +12,8 @@ export const SITES_LABEL_ID = 'livewx-sites-label';
 export const SITES_RANGE_SOURCE_ID = 'livewx-sites-range-source';
 export const SITES_RANGE_FILL_ID = 'livewx-sites-range-fill';
 export const SITES_RANGE_LINE_ID = 'livewx-sites-range-line';
+export const LIGHTNING_SOURCE_ID = 'livewx-lightning-strikes';
+export const LIGHTNING_LAYER_ID = 'livewx-lightning-strikes-circle';
 
 export const CONUS_SITE_ID = 'CONUS';
 export const IEM_TMS_BASE = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0';
@@ -25,6 +27,7 @@ export const PROTOCOL_NAME = 'livewx';
 
 export const DEFAULT_OPACITY = 0.7;
 export const DEFAULT_FILTER = 0;
+export const DEFAULT_LIGHTNING_STALE_SEC = 120;
 
 /** IEM mosaic tiles get mushy past this; MapLibre overzooms instead of fetching empty high-z tiles. */
 export const MOSAIC_MAXZOOM = 8;

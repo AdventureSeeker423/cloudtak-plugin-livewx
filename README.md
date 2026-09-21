@@ -1,6 +1,6 @@
 # LiveWX Radar
 
-CloudTAK plugin that overlays live NEXRAD imagery and nationwide NWS watches/warnings on the map.
+CloudTAK plugin that overlays live NEXRAD imagery, nationwide NWS watches/warnings, and live lightning on the map.
 
 Requires CloudTAK **13.45** or newer.
 
@@ -12,9 +12,16 @@ Requires CloudTAK **13.45** or newer.
 - Level 2 names (REF, VEL, …) map to the closest IEM Level 3 image for this version.
 - Transparency and a min-value **filter** slider (hide weak reflectivity / slow velocity).
 - Optional **watches and warnings** from `api.weather.gov` — nationwide, not scoped to the selected radar.
+- Optional **lightning** from Blitzortung — off by default; when on, strikes in the current map view fade from white to dark red over the strike lifetime (default 120s).
 - Simple last-hour **replay** when IEM has archive frames.
 
 Imagery is pre-rendered IEM tiles (CONUS mosaic and per-site RIDGE). Product names are NWS/IEM Level 2 and Level 3 codes; defaults are N0B reflectivity and N0G velocity.
+
+Lightning is client-side only (no TAK/CoT). Strike locations are filtered to the map bounds, not a picked center. This data is for **entertainment / situational awareness only** — not for life safety or official warning.
+
+### Lightning and CloudTAK CSP
+
+Production CloudTAK nginx often sets `Content-Security-Policy` with `connect-src 'self'`. That **blocks** `wss://ws1.blitzortung.org`, `wss://ws7.blitzortung.org`, and `wss://ws8.blitzortung.org`, so the Lightning toggle will fail to connect until those hosts are allowed in CloudTAK’s CSP. This plugin does not patch CloudTAK nginx.
 
 ## Install
 
@@ -46,4 +53,5 @@ Symlink this checkout to `CloudTAK/api/web/plugins/livewx-radar`, run `npm insta
 
 - Radar tiles: [Iowa Environmental Mesonet](https://mesonet.agron.iastate.edu/ogc/)
 - Watches and warnings: [National Weather Service API](https://www.weather.gov/documentation/services-web-api)
+- Lightning: [Blitzortung.org](https://www.blitzortung.org/) and contributors. Lightning overlay adapted from [cmlaird/CloudTAK-Plugin-Lightning](https://github.com/cmlaird/CloudTAK-Plugin-Lightning) (MIT).
 - Site list and product taxonomy adapted from [Supercell Wx](https://github.com/dpaulat/supercell-wx) (MIT)

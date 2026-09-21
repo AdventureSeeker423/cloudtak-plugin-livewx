@@ -49,7 +49,7 @@ export default class LiveWxRadar implements PluginInstance {
             label: 'LiveWX Radar',
             route: ROUTE_NAME,
             tooltip: 'LiveWX Radar',
-            description: 'NEXRAD overlay and NWS watches/warnings',
+            description: 'NEXRAD overlay, NWS watches/warnings, and lightning',
             icon: IconRadar,
         });
     }

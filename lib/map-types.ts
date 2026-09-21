@@ -11,6 +11,12 @@ export type LiveWxMap = {
     setPaintProperty?: (id: string, name: string, value: unknown) => void;
     getZoom?: () => number;
     getCenter?: () => { lat: number; lng: number };
+    getBounds?: () => {
+        getWest: () => number;
+        getEast: () => number;
+        getSouth: () => number;
+        getNorth: () => number;
+    };
     on: (type: string, layerOrHandler: unknown, handler?: unknown) => void;
     off: (type: string, layerOrHandler: unknown, handler?: unknown) => void;
     once?: (type: string, handler: () => void) => void;

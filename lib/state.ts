@@ -1,5 +1,11 @@
 import { reactive } from 'vue';
-import { CONUS_SITE_ID, DEFAULT_FILTER, DEFAULT_OPACITY, STORAGE_KEY } from './constants.ts';
+import {
+    CONUS_SITE_ID,
+    DEFAULT_FILTER,
+    DEFAULT_LIGHTNING_STALE_SEC,
+    DEFAULT_OPACITY,
+    STORAGE_KEY,
+} from './constants.ts';
 import {
     MOSAIC_DEFAULT_PRODUCT_ID,
     SITE_DEFAULT_PRODUCT_ID,
@@ -14,6 +20,8 @@ export interface PersistedSettings {
     opacity: number;
     filter: number;
     alertsEnabled: boolean;
+    lightningEnabled: boolean;
+    lightningStaleSec: number;
     sitesOnMap: boolean;
 }
 
@@ -34,6 +42,8 @@ function load(): PersistedSettings {
         opacity: DEFAULT_OPACITY,
         filter: DEFAULT_FILTER,
         alertsEnabled: false,
+        lightningEnabled: false,
+        lightningStaleSec: DEFAULT_LIGHTNING_STALE_SEC,
         sitesOnMap: false,
     };
     try {
@@ -47,6 +57,13 @@ function load(): PersistedSettings {
             opacity: clamp(Number(parsed.opacity), 0, 1, defaults.opacity),
             filter: clamp(Number(parsed.filter), 0, 75, defaults.filter),
             alertsEnabled: Boolean(parsed.alertsEnabled),
+            lightningEnabled: Boolean(parsed.lightningEnabled),
+            lightningStaleSec: clamp(
+                Number(parsed.lightningStaleSec),
+                15,
+                600,
+                defaults.lightningStaleSec,
+            ),
             sitesOnMap: Boolean(parsed.sitesOnMap),
         };
     } catch {
@@ -85,6 +102,8 @@ export function persist(): void {
         opacity: state.opacity,
         filter: state.filter,
         alertsEnabled: state.alertsEnabled,
+        lightningEnabled: state.lightningEnabled,
+        lightningStaleSec: state.lightningStaleSec,
         sitesOnMap: state.sitesOnMap,
     };
     try {
@@ -140,6 +159,16 @@ export function setFilter(filter: number): void {
 export function setAlertsEnabled(enabled: boolean): void {
     state.alertsEnabled = enabled;
     persist();
+}
+
+export function setLightningEnabled(enabled: boolean): void {
+    state.lightningEnabled = enabled;
+    persist();
+}
+
+export function setLightningStaleSec(sec: number): void {
+    state.lightningStaleSec = clamp(sec, 15, 600, DEFAULT_LIGHTNING_STALE_SEC);
+    persistSoon();
 }
 
 export function setSitesOnMap(enabled: boolean): void {

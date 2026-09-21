@@ -2,6 +2,7 @@ import type { PluginAPI } from '@tak-ps/cloudtak';
 import { ALERT_FILL_ID, ALERT_LINE_ID, ALERT_POLL_MS, ALERT_SOURCE_ID, NWS_ALERTS_URL } from './constants.ts';
 import type { LiveWxMap } from './map-types.ts';
 import { state } from './state.ts';
+import { SURFACE_BG, SURFACE_BORDER, SURFACE_FG, syncSidebarTheme } from './theme.ts';
 
 interface AlertProps {
     event?: string;
@@ -75,9 +76,9 @@ function ensurePopupStyle(): void {
     el.id = POPUP_STYLE_ID;
     el.textContent = `
 .livewx-alert-popup .maplibregl-popup-content {
-    color: var(--tblr-body-color, var(--bs-body-color, inherit));
-    background: var(--tblr-bg-surface, var(--bs-tertiary-bg, var(--bs-body-bg, Canvas)));
-    border: 1px solid var(--tblr-border-color, var(--bs-border-color, rgba(127, 127, 127, 0.35)));
+    color: ${SURFACE_FG};
+    background: ${SURFACE_BG};
+    border: 1px solid ${SURFACE_BORDER};
     padding: 12px 32px 12px 12px;
     border-radius: 8px;
     box-shadow: var(--tblr-box-shadow-lg, 0 4px 18px rgba(0, 0, 0, 0.35));
@@ -89,24 +90,24 @@ function ensurePopupStyle(): void {
     padding: 4px 8px;
 }
 .livewx-alert-popup .maplibregl-popup-close-button:hover {
-    color: var(--tblr-body-color, var(--bs-body-color, inherit));
+    color: ${SURFACE_FG};
     background: transparent;
 }
 .livewx-alert-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
 .livewx-alert-popup.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
 .livewx-alert-popup.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
-    border-top-color: var(--tblr-bg-surface, var(--bs-tertiary-bg, var(--bs-body-bg, Canvas)));
+    border-top-color: ${SURFACE_BG};
 }
 .livewx-alert-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip,
 .livewx-alert-popup.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
 .livewx-alert-popup.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
-    border-bottom-color: var(--tblr-bg-surface, var(--bs-tertiary-bg, var(--bs-body-bg, Canvas)));
+    border-bottom-color: ${SURFACE_BG};
 }
 .livewx-alert-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
-    border-right-color: var(--tblr-bg-surface, var(--bs-tertiary-bg, var(--bs-body-bg, Canvas)));
+    border-right-color: ${SURFACE_BG};
 }
 .livewx-alert-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
-    border-left-color: var(--tblr-bg-surface, var(--bs-tertiary-bg, var(--bs-body-bg, Canvas)));
+    border-left-color: ${SURFACE_BG};
 }
 .livewx-alert-card {
     max-width: 400px;
@@ -114,23 +115,23 @@ function ensurePopupStyle(): void {
     overflow: auto;
 }
 .livewx-alert-title {
-    color: var(--tblr-body-color, var(--bs-body-color, inherit));
+    color: ${SURFACE_FG};
     font-size: 15px;
     font-weight: 700;
     margin-bottom: 8px;
 }
 .livewx-alert-body {
-    color: var(--tblr-body-color, var(--bs-body-color, inherit));
+    color: ${SURFACE_FG};
 }
 .livewx-alert-body p {
-    margin: 0 0 0.65em;
+    margin: 0 0 0.7em;
 }
 .livewx-alert-body p:last-child,
 .livewx-alert-list:last-child {
     margin-bottom: 0;
 }
 .livewx-alert-list {
-    margin: 0 0 0.65em;
+    margin: 0 0 0.7em;
     padding-left: 1.15em;
 }
 .livewx-alert-list li {
@@ -239,8 +240,41 @@ function textOf(value: unknown): string {
     return typeof value === 'string' ? value.trim() : '';
 }
 
+const SECTION_LINE = /^(HAZARD|SOURCE|IMPACT|LOCATIONS?|PRECAUTIONARY|AND\/OR|TIME\s+LINE|INSTRUCTIONS?)\b/i;
+
+function unwrapNws(text: string): string[] {
+    const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/&&/g, '\n\n').split('\n');
+    const paras: string[] = [];
+    let buf = '';
+    const flush = (): void => {
+        const next = buf.replace(/\s+/g, ' ').trim();
+        if (next) paras.push(next);
+        buf = '';
+    };
+    for (const raw of lines) {
+        const trimmed = raw.trim();
+        if (!trimmed) {
+            flush();
+            continue;
+        }
+        if (trimmed.startsWith('*')) {
+            flush();
+            paras.push(trimmed.replace(/^\*+\s*/, '* '));
+            continue;
+        }
+        if (SECTION_LINE.test(trimmed) || /^[A-Z][A-Z0-9 /.&-]{1,48}\.{2,}/.test(trimmed)) {
+            flush();
+            buf = trimmed;
+            continue;
+        }
+        buf = buf ? `${buf} ${trimmed}` : trimmed;
+    }
+    flush();
+    return paras;
+}
+
 function formatNwsText(text: string): string {
-    const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/&&/g, '\n');
+    const paras = unwrapNws(text);
     const chunks: string[] = [];
     let list: string[] = [];
     const flushList = (): void => {
@@ -248,25 +282,20 @@ function formatNwsText(text: string): string {
         chunks.push(`<ul class="livewx-alert-list">${list.map((item) => `<li>${item}</li>`).join('')}</ul>`);
         list = [];
     };
-    for (const raw of normalized.split('\n')) {
-        const line = raw.trim();
-        if (!line) {
-            flushList();
-            continue;
-        }
-        if (line.startsWith('*')) {
-            list.push(escapeHtml(line.replace(/^\*+\s*/, '')));
+    for (const para of paras) {
+        if (para.startsWith('* ')) {
+            list.push(escapeHtml(para.slice(2)));
             continue;
         }
         flushList();
-        chunks.push(`<p>${escapeHtml(line)}</p>`);
+        chunks.push(`<p>${escapeHtml(para)}</p>`);
     }
     flushList();
     return chunks.join('');
 }
 
 function alertHtml(props: AlertProps): string {
-    const headline = textOf(props.headline);
+    const headline = textOf(props.headline).replace(/\s+/g, ' ');
     const description = textOf(props.description);
     const instruction = textOf(props.instruction);
     const event = textOf(props.event);
@@ -274,7 +303,9 @@ function alertHtml(props: AlertProps): string {
     if (headline) parts.push(`<div class="livewx-alert-title">${escapeHtml(headline)}</div>`);
     else if (event) parts.push(`<div class="livewx-alert-title">${escapeHtml(event)}</div>`);
     if (description) parts.push(`<div class="livewx-alert-body">${formatNwsText(description)}</div>`);
-    if (instruction && instruction !== description) {
+    const descFlat = description.replace(/\s+/g, ' ');
+    const instFlat = instruction.replace(/\s+/g, ' ');
+    if (instruction && instFlat !== descFlat && !descFlat.includes(instFlat)) {
         parts.push(`<div class="livewx-alert-body">${formatNwsText(instruction)}</div>`);
     }
     return `<div class="livewx-alert-card">${parts.join('')}</div>`;
@@ -286,6 +317,7 @@ async function showPopup(
     props: AlertProps,
 ): Promise<void> {
     ensurePopupStyle();
+    syncSidebarTheme();
     popup?.remove();
     const html = alertHtml(props);
 
