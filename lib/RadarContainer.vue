@@ -24,7 +24,7 @@
             class='form-label mb-1'
             for='livewx-opacity'
         >
-            Transparency {{ Math.round((1 - state.opacity) * 100) }}%
+            Opacity {{ Math.round(state.opacity * 100) }}%
         </label>
         <input
             id='livewx-opacity'
@@ -32,8 +32,10 @@
             type='range'
             min='0'
             max='100'
+            step='1'
             :value='Math.round(state.opacity * 100)'
             @input='onOpacity'
+            @wheel.prevent='onOpacityWheel'
         >
 
         <label
@@ -125,7 +127,13 @@
             </optgroup>
         </select>
         <p
-            v-if='isMosaic(state.siteId)'
+            v-if='isMosaic(state.siteId) && autoSiteId'
+            class='text-secondary small mb-3'
+        >
+            Close-up uses nearest radar {{ autoSiteId }}. Zoom out for the CONUS mosaic.
+        </p>
+        <p
+            v-else-if='isMosaic(state.siteId)'
             class='text-secondary small mb-3'
         >
             Mosaic mode is reflectivity, echo tops, and precipitation. Pick a radar site for velocity and dual-pol.
@@ -148,10 +156,12 @@
             class='form-range mb-3'
             type='range'
             min='0'
+            step='1'
             :max='filterCeiling'
             :value='state.filter'
             :disabled='current?.filterKind === "other"'
             @input='onFilter'
+            @wheel.prevent='onFilterWheel'
         >
 
         <div class='form-check form-switch mb-3'>
@@ -206,10 +216,12 @@
             class='form-range mb-1'
             type='range'
             min='-1'
+            step='1'
             :max='Math.max(frames.length - 1, 0)'
             :value='state.replayIndex'
             :disabled='!frames.length'
             @input='onReplay'
+            @wheel.prevent='onReplayWheel'
         >
         <p class='text-secondary small mb-3'>
             {{ frames.length ? (state.replayIndex < 0 ? 'Live' : frames[state.replayIndex]?.label) : 'No archive frames for this product' }}
@@ -229,6 +241,7 @@ import { computed } from 'vue';
 import type { PluginAPI } from '@tak-ps/cloudtak';
 import { CONUS_SITE_ID } from './constants.ts';
 import {
+    autoSiteId,
     currentProduct,
     applyAlerts,
     applyFilter,
@@ -271,9 +284,17 @@ function onOverlayToggle(ev: Event): void {
     void setOverlayEnabled(on);
 }
 
+function wheelStep(ev: WheelEvent): number {
+    return ev.deltaY < 0 ? 1 : -1;
+}
+
 function onOpacity(ev: Event): void {
-    const n = Number((ev.target as HTMLInputElement).value);
-    setOpacity(n / 100);
+    setOpacity(Number((ev.target as HTMLInputElement).value) / 100);
+    applyOpacity();
+}
+
+function onOpacityWheel(ev: WheelEvent): void {
+    setOpacity((Math.round(state.opacity * 100) + wheelStep(ev)) / 100);
     applyOpacity();
 }
 
@@ -294,7 +315,13 @@ function onProduct(ev: Event): void {
 
 function onFilter(ev: Event): void {
     setFilter(Number((ev.target as HTMLInputElement).value));
-    void applyFilter();
+    applyFilter();
+}
+
+function onFilterWheel(ev: WheelEvent): void {
+    if (current.value?.filterKind === 'other') return;
+    setFilter(state.filter + wheelStep(ev));
+    applyFilter();
 }
 
 function onAlertsToggle(ev: Event): void {
@@ -312,6 +339,11 @@ function onLive(): void {
 
 function onReplay(ev: Event): void {
     void setReplayIndex(Number((ev.target as HTMLInputElement).value));
+}
+
+function onReplayWheel(ev: WheelEvent): void {
+    if (!frames.value.length) return;
+    void setReplayIndex(state.replayIndex + wheelStep(ev));
 }
 </script>
 

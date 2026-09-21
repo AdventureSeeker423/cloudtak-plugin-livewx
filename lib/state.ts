@@ -72,7 +72,13 @@ export const state = reactive<LiveWxState>({
 
 export const siteQuery = ref('');
 
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
 export function persist(): void {
+    if (persistTimer) {
+        clearTimeout(persistTimer);
+        persistTimer = null;
+    }
     const payload: PersistedSettings = {
         siteId: state.siteId,
         productId: state.productId,
@@ -86,6 +92,15 @@ export function persist(): void {
     } catch {
         /* ignore quota */
     }
+}
+
+/** Debounced persist for slider drags / wheel so the overlay can update immediately. */
+export function persistSoon(): void {
+    if (persistTimer) clearTimeout(persistTimer);
+    persistTimer = setTimeout(() => {
+        persistTimer = null;
+        persist();
+    }, 300);
 }
 
 export function setSite(siteId: string): void {
@@ -109,12 +124,12 @@ export function setProduct(productId: string): void {
 
 export function setOpacity(opacity: number): void {
     state.opacity = clamp(opacity, 0, 1, DEFAULT_OPACITY);
-    persist();
+    persistSoon();
 }
 
 export function setFilter(filter: number): void {
     state.filter = clamp(filter, 0, 75, DEFAULT_FILTER);
-    persist();
+    persistSoon();
 }
 
 export function setAlertsEnabled(enabled: boolean): void {

@@ -1,12 +1,19 @@
 import { ref } from 'vue';
 import type { PluginAPI } from '@tak-ps/cloudtak';
 import { startAlerts, stopAlerts } from './alerts.ts';
-import { RADAR_LAYER_ID, RADAR_SOURCE_ID, REFRESH_MS } from './constants.ts';
+import {
+    MOSAIC_CLOSEUP_ZOOM,
+    MOSAIC_MAXZOOM,
+    RADAR_LAYER_ID,
+    RADAR_SOURCE_ID,
+    REFRESH_MS,
+    RIDGE_MAXZOOM,
+} from './constants.ts';
 import type { LiveWxMap } from './map-types.ts';
 import { FALLBACK_SITE_CODES, getProduct, mosaicProducts, productsForSite, siteCode } from './products.ts';
 import type { RadarProduct } from './products.ts';
 import { refreshSiteMarkers, startSiteMarkers, stopSiteMarkers } from './site-markers.ts';
-import { findSite, isMosaic, toIemId } from './sites.ts';
+import { findSite, isMosaic, nearestWsr88d, toIemId } from './sites.ts';
 import { persist, setSite, state } from './state.ts';
 import {
     ensureFilterProtocol,
@@ -29,7 +36,12 @@ let protocolOn = false;
 export const availableCodes = ref<string[] | null>(null);
 let frames: ScanFrame[] = [];
 export const replayFramesRef = ref<ScanFrame[]>([]);
+export const autoSiteId = ref<string | null>(null);
 let styleHandler: (() => void) | null = null;
+let viewHandler: (() => void) | null = null;
+let lastSourceSig = '';
+let filterRaf = 0;
+let viewRaf = 0;
 
 export function currentProduct(): RadarProduct | undefined {
     return getProduct(state.productId);
@@ -67,44 +79,82 @@ function statusText(): string {
     if (!state.overlayEnabled) return 'Overlay off';
     const product = currentProduct();
     const site = findSite(state.siteId);
-    const where = site ? (isMosaic(site.id) ? 'CONUS mosaic' : site.id) : state.siteId;
+    let where = site ? (isMosaic(site.id) ? 'CONUS mosaic' : site.id) : state.siteId;
+    if (isMosaic(state.siteId) && autoSiteId.value) {
+        where = `${autoSiteId.value} close-up`;
+    }
     const frame = state.replayIndex >= 0 && frames[state.replayIndex]
         ? frames[state.replayIndex].label
         : 'Live';
     return `${where} · ${product?.label ?? state.productId} · ${frame}`;
 }
 
+function displaySite(): { siteId: string; siteType: string; maxzoom: number } {
+    if (!isMosaic(state.siteId)) {
+        const site = findSite(state.siteId);
+        autoSiteId.value = null;
+        return {
+            siteId: state.siteId,
+            siteType: site?.type ?? 'wsr88d',
+            maxzoom: RIDGE_MAXZOOM,
+        };
+    }
+    const map = mapOf();
+    const zoom = map?.getZoom?.() ?? 0;
+    const live = state.replayIndex < 0;
+    if (live && zoom >= MOSAIC_CLOSEUP_ZOOM) {
+        const center = map?.getCenter?.();
+        const nearest = center ? nearestWsr88d(center.lat, center.lng) : undefined;
+        if (nearest) {
+            autoSiteId.value = nearest.id;
+            return { siteId: nearest.id, siteType: nearest.type, maxzoom: RIDGE_MAXZOOM };
+        }
+    }
+    autoSiteId.value = null;
+    return { siteId: state.siteId, siteType: 'mosaic', maxzoom: MOSAIC_MAXZOOM };
+}
+
 function applyTiles(map: LiveWxMap): void {
     const product = currentProduct();
     if (!product) return;
-    const site = findSite(state.siteId);
+    const display = displaySite();
+    const useProtocol = protocolOn && product.filterKind !== 'other';
     const url = tileUrl({
-        siteId: state.siteId,
+        siteId: display.siteId,
         product,
-        siteType: site?.type ?? 'wsr88d',
+        siteType: display.siteType,
         stamp: currentStamp(),
         filter: state.filter,
         cacheBust,
-    }, protocolOn && state.filter > 0 && product.filterKind !== 'other');
+    }, useProtocol);
 
+    const sig = `${display.siteId}|${display.maxzoom}`;
     const source = map.getSource(RADAR_SOURCE_ID) as RasterSource | undefined;
-    if (source?.setTiles) {
+    if (source?.setTiles && lastSourceSig === sig && map.getLayer(RADAR_LAYER_ID)) {
         source.setTiles([url]);
+        map.setPaintProperty?.(RADAR_LAYER_ID, 'raster-opacity', state.opacity);
         return;
     }
+    lastSourceSig = sig;
     if (map.getLayer(RADAR_LAYER_ID)) map.removeLayer(RADAR_LAYER_ID);
     if (map.getSource(RADAR_SOURCE_ID)) map.removeSource(RADAR_SOURCE_ID);
     map.addSource(RADAR_SOURCE_ID, {
         type: 'raster',
         tiles: [url],
         tileSize: 256,
+        minzoom: 0,
+        maxzoom: display.maxzoom,
         attribution: 'Radar: Iowa Environmental Mesonet',
     });
     map.addLayer({
         id: RADAR_LAYER_ID,
         type: 'raster',
         source: RADAR_SOURCE_ID,
-        paint: { 'raster-opacity': state.opacity },
+        paint: {
+            'raster-opacity': state.opacity,
+            'raster-fade-duration': 0,
+            'raster-resampling': 'linear',
+        },
     }, firstSymbolLayer(map));
 }
 
@@ -118,6 +168,8 @@ function ensureRadarLayer(map: LiveWxMap): void {
 }
 
 function removeRadarLayer(map: LiveWxMap): void {
+    lastSourceSig = '';
+    autoSiteId.value = null;
     try { if (map.getLayer(RADAR_LAYER_ID)) map.removeLayer(RADAR_LAYER_ID); } catch { /* ignore */ }
     try { if (map.getSource(RADAR_SOURCE_ID)) map.removeSource(RADAR_SOURCE_ID); } catch { /* ignore */ }
 }
@@ -192,9 +244,23 @@ function startRefresh(): void {
 function onStyle(): void {
     const map = mapOf();
     if (!map) return;
+    lastSourceSig = '';
     if (state.overlayEnabled) ensureRadarLayer(map);
     if (state.alertsEnabled && apiRef) startAlerts(apiRef);
     if (state.sitesOnMap && apiRef) startSiteMarkers(apiRef, onSitePicked);
+}
+
+function onViewChange(): void {
+    if (!state.overlayEnabled || !isMosaic(state.siteId)) return;
+    if (viewRaf) return;
+    viewRaf = requestAnimationFrame(() => {
+        viewRaf = 0;
+        const map = mapOf();
+        if (map && state.overlayEnabled) {
+            applyTiles(map);
+            state.status = statusText();
+        }
+    });
 }
 
 function onSitePicked(id: string): void {
@@ -220,7 +286,10 @@ export async function init(api: PluginAPI): Promise<void> {
     const map = mapOf();
     if (map) {
         styleHandler = onStyle;
+        viewHandler = onViewChange;
         map.on('style.load', styleHandler);
+        map.on('zoom', viewHandler);
+        map.on('moveend', viewHandler);
     }
     if (state.alertsEnabled) startAlerts(api);
     if (state.sitesOnMap) startSiteMarkers(api, onSitePicked);
@@ -232,6 +301,14 @@ export function destroy(): void {
         clearInterval(refreshTimer);
         refreshTimer = null;
     }
+    if (filterRaf) {
+        cancelAnimationFrame(filterRaf);
+        filterRaf = 0;
+    }
+    if (viewRaf) {
+        cancelAnimationFrame(viewRaf);
+        viewRaf = 0;
+    }
     stopAlerts();
     stopSiteMarkers();
     const map = mapOf();
@@ -239,9 +316,14 @@ export function destroy(): void {
         if (styleHandler) {
             try { map.off('style.load', styleHandler); } catch { /* ignore */ }
         }
+        if (viewHandler) {
+            try { map.off('zoom', viewHandler); } catch { /* ignore */ }
+            try { map.off('moveend', viewHandler); } catch { /* ignore */ }
+        }
         removeRadarLayer(map);
     }
     styleHandler = null;
+    viewHandler = null;
     apiRef = null;
     state.overlayEnabled = false;
     void removeFilterProtocol();
@@ -286,18 +368,18 @@ export async function applyRadarSettings(): Promise<void> {
 }
 
 export function applyOpacity(): void {
-    persist();
     const map = mapOf();
     map?.setPaintProperty?.(RADAR_LAYER_ID, 'raster-opacity', state.opacity);
 }
 
-export async function applyFilter(): Promise<void> {
-    persist();
+export function applyFilter(): void {
     if (!state.overlayEnabled) return;
-    protocolOn = await ensureFilterProtocol();
-    cacheBust = Date.now();
-    const map = mapOf();
-    if (map) applyTiles(map);
+    if (filterRaf) return;
+    filterRaf = requestAnimationFrame(() => {
+        filterRaf = 0;
+        const map = mapOf();
+        if (map) applyTiles(map);
+    });
 }
 
 export function applyAlerts(): void {

@@ -24,3 +24,10 @@ export const PROTOCOL_NAME = 'livewx';
 
 export const DEFAULT_OPACITY = 0.7;
 export const DEFAULT_FILTER = 0;
+
+/** IEM mosaic tiles get mushy past this; MapLibre overzooms instead of fetching empty high-z tiles. */
+export const MOSAIC_MAXZOOM = 8;
+/** Single-site RIDGE has more native detail. */
+export const RIDGE_MAXZOOM = 10;
+/** At this zoom and above, CONUS mosaic switches to the nearest WSR-88D. */
+export const MOSAIC_CLOSEUP_ZOOM = 7;

@@ -9,6 +9,8 @@ export type LiveWxMap = {
     removeSource: (id: string) => void;
     getStyle?: () => { layers?: StyleLayer[] };
     setPaintProperty?: (id: string, name: string, value: unknown) => void;
+    getZoom?: () => number;
+    getCenter?: () => { lat: number; lng: number };
     on: (type: string, layerOrHandler: unknown, handler?: unknown) => void;
     off: (type: string, layerOrHandler: unknown, handler?: unknown) => void;
     once?: (type: string, handler: () => void) => void;

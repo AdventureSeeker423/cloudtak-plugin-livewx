@@ -23,7 +23,7 @@ type ProtocolParams = {
 
 type AddProtocol = (
     name: string,
-    handler: (params: ProtocolParams, abort?: AbortController) => Promise<{ data: ArrayBuffer }>,
+    handler: (params: ProtocolParams, abort?: AbortController) => Promise<{ data: ArrayBuffer | ImageBitmap | ImageData }>,
 ) => void;
 
 async function maplibreModule(): Promise<{ addProtocol?: AddProtocol; removeProtocol?: (name: string) => void } | null> {
@@ -46,10 +46,41 @@ function httpsFromProtocol(url: string): string {
     return url.replace(`${PROTOCOL_NAME}://`, 'https://');
 }
 
+const TILE_CACHE_MAX = 96;
+const originalTiles = new Map<string, Promise<Blob>>();
+
+function cacheKey(parsed: URL): string {
+    const u = new URL(parsed.toString());
+    u.searchParams.delete('f');
+    u.searchParams.delete('k');
+    return u.toString();
+}
+
+function cachedBlob(key: string, load: () => Promise<Blob>): Promise<Blob> {
+    const hit = originalTiles.get(key);
+    if (hit) {
+        originalTiles.delete(key);
+        originalTiles.set(key, hit);
+        return hit;
+    }
+    const pending = load().catch((err: unknown) => {
+        originalTiles.delete(key);
+        throw err;
+    });
+    originalTiles.set(key, pending);
+    if (originalTiles.size > TILE_CACHE_MAX) {
+        const oldest = originalTiles.keys().next().value;
+        if (oldest) originalTiles.delete(oldest);
+    }
+    return pending;
+}
+
+type ProtocolResult = { data: ArrayBuffer | ImageBitmap | ImageData };
+
 async function handleProtocol(
     params: ProtocolParams,
-    abort?: AbortController,
-): Promise<{ data: ArrayBuffer }> {
+    _abort?: AbortController,
+): Promise<ProtocolResult> {
     const raw = params.url ?? '';
     const parsed = new URL(httpsFromProtocol(raw));
     const threshold = Number(parsed.searchParams.get('f') ?? '0');
@@ -57,14 +88,14 @@ async function handleProtocol(
     parsed.searchParams.delete('f');
     parsed.searchParams.delete('k');
 
-    const response = await fetch(parsed.toString(), {
-        signal: abort?.signal,
+    const blob = await cachedBlob(cacheKey(parsed), async () => {
+        const response = await fetch(parsed.toString());
+        if (!response.ok) {
+            throw new Error(`Radar tile HTTP ${response.status}`);
+        }
+        return response.blob();
     });
-    if (!response.ok) {
-        throw new Error(`Radar tile HTTP ${response.status}`);
-    }
 
-    const blob = await response.blob();
     if (threshold <= 0) {
         return { data: await blob.arrayBuffer() };
     }
@@ -83,14 +114,7 @@ async function handleProtocol(
     const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
     filterImageData(image.data, kind, threshold);
     ctx.putImageData(image, 0, 0);
-
-    const out = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob((b) => {
-            if (b) resolve(b);
-            else reject(new Error('Failed to encode filtered tile'));
-        }, 'image/png');
-    });
-    return { data: await out.arrayBuffer() };
+    return { data: await createImageBitmap(canvas) };
 }
 
 export async function ensureFilterProtocol(): Promise<boolean> {
@@ -147,16 +171,15 @@ export function iemLayerName(req: TileRequest): string {
 
 export function tileUrl(req: TileRequest, useProtocol: boolean): string {
     const layer = iemLayerName(req);
-    const kind = req.product.filterKind;
     const query = new URLSearchParams();
     if (req.cacheBust) query.set('t', String(req.cacheBust));
-    if (useProtocol && req.filter > 0) {
+    if (useProtocol) {
         query.set('f', String(req.filter));
-        query.set('k', kind);
+        query.set('k', req.product.filterKind);
     }
     const qs = query.toString();
     const path = `${IEM_TMS_BASE}/${layer}/{z}/{x}/{y}.png${qs ? `?${qs}` : ''}`;
-    if (useProtocol && req.filter > 0 && kind !== 'other') {
+    if (useProtocol) {
         return path.replace('https://', `${PROTOCOL_NAME}://`);
     }
     return path;
