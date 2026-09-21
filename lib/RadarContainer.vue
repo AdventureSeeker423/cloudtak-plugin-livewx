@@ -76,6 +76,28 @@
             </p>
         </template>
 
+        <div class='form-check form-switch mb-3'>
+            <input
+                id='livewx-tracks'
+                class='form-check-input'
+                type='checkbox'
+                :checked='state.tracksEnabled'
+                @change='onTracksToggle'
+            >
+            <label
+                class='form-check-label'
+                for='livewx-tracks'
+            >
+                Storm Tracks
+            </label>
+        </div>
+        <p
+            v-if='state.tracksEnabled'
+            class='text-secondary small mb-3'
+        >
+            {{ state.trackCount }} Storms Nationwide
+        </p>
+
         <template v-if='state.overlayEnabled'>
             <label
                 class='form-label mb-1'
@@ -344,6 +366,7 @@ import {
     applyAlerts,
     applyFilter,
     applyLightningToggle,
+    applyTracks,
     applyOpacity,
     applyRadarSettings,
     applySiteMarkers,
@@ -364,6 +387,7 @@ import {
     setFilter,
     setLightningEnabled,
     setLightningStaleSec,
+    setTracksEnabled,
     setOpacity,
     setProduct,
     setSite,
@@ -607,6 +631,11 @@ function onLightningLifetime(ev: Event): void {
 
 function onLightningLifetimeWheel(ev: WheelEvent): void {
     setLightningStaleSec(state.lightningStaleSec + wheelStep(ev) * 15);
+}
+
+function onTracksToggle(ev: Event): void {
+    setTracksEnabled((ev.target as HTMLInputElement).checked);
+    applyTracks();
 }
 
 const lightningStatus = computed(() => {

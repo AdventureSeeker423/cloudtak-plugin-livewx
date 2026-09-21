@@ -22,6 +22,7 @@ export interface PersistedSettings {
     alertsEnabled: boolean;
     lightningEnabled: boolean;
     lightningStaleSec: number;
+    tracksEnabled: boolean;
     sitesOnMap: boolean;
 }
 
@@ -32,6 +33,7 @@ export interface LiveWxState extends PersistedSettings {
     status: string;
     error: string;
     alertCount: number;
+    trackCount: number;
 }
 
 function load(): PersistedSettings {
@@ -44,6 +46,7 @@ function load(): PersistedSettings {
         alertsEnabled: false,
         lightningEnabled: false,
         lightningStaleSec: DEFAULT_LIGHTNING_STALE_SEC,
+        tracksEnabled: false,
         sitesOnMap: false,
     };
     try {
@@ -64,6 +67,7 @@ function load(): PersistedSettings {
                 600,
                 defaults.lightningStaleSec,
             ),
+            tracksEnabled: Boolean(parsed.tracksEnabled),
             sitesOnMap: Boolean(parsed.sitesOnMap),
         };
     } catch {
@@ -86,6 +90,7 @@ export const state = reactive<LiveWxState>({
     status: 'Overlay Off',
     error: '',
     alertCount: 0,
+    trackCount: 0,
 });
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -104,6 +109,7 @@ export function persist(): void {
         alertsEnabled: state.alertsEnabled,
         lightningEnabled: state.lightningEnabled,
         lightningStaleSec: state.lightningStaleSec,
+        tracksEnabled: state.tracksEnabled,
         sitesOnMap: state.sitesOnMap,
     };
     try {
@@ -169,6 +175,11 @@ export function setLightningEnabled(enabled: boolean): void {
 export function setLightningStaleSec(sec: number): void {
     state.lightningStaleSec = clamp(sec, 15, 600, DEFAULT_LIGHTNING_STALE_SEC);
     persistSoon();
+}
+
+export function setTracksEnabled(enabled: boolean): void {
+    state.tracksEnabled = enabled;
+    persist();
 }
 
 export function setSitesOnMap(enabled: boolean): void {

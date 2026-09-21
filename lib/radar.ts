@@ -29,6 +29,7 @@ import type { RadarProduct } from './products.ts';
 import { refreshSiteMarkers, startSiteMarkers, stopSiteMarkers } from './site-markers.ts';
 import { findSite, isMosaic, toIemId } from './sites.ts';
 import { persist, setSite, state } from './state.ts';
+import { restoreTracks, startTracks, stopTracks } from './tracks.ts';
 import { syncSidebarTheme } from './theme.ts';
 import {
     ensureFilterProtocol,
@@ -285,6 +286,7 @@ function onStyle(): void {
     attachRadarAgeControl(map);
     if (state.alertsEnabled && apiRef) startAlerts(apiRef);
     if (state.sitesOnMap && apiRef) startSiteMarkers(apiRef, onSitePicked);
+    if (apiRef) restoreTracks(apiRef);
     restoreLightningLayers();
 }
 
@@ -317,6 +319,7 @@ export async function init(api: PluginAPI): Promise<void> {
     }
     if (state.alertsEnabled) startAlerts(api);
     if (state.sitesOnMap) startSiteMarkers(api, onSitePicked);
+    if (state.tracksEnabled) startTracks(api);
     if (state.lightningEnabled) applyLightning();
     syncSidebarTheme();
 }
@@ -333,6 +336,7 @@ export function destroy(): void {
     }
     stopAlerts();
     stopSiteMarkers();
+    stopTracks();
     destroyLightning();
     const map = mapOf();
     if (map) {
@@ -415,6 +419,13 @@ export function applyAlerts(): void {
 export function applyLightningToggle(): void {
     persist();
     applyLightning();
+}
+
+export function applyTracks(): void {
+    persist();
+    if (!apiRef) return;
+    if (state.tracksEnabled) startTracks(apiRef);
+    else stopTracks();
 }
 
 export async function setReplayIndex(index: number): Promise<void> {

@@ -16,15 +16,23 @@ export const LIGHTNING_SOURCE_ID = 'livewx-lightning-strikes';
 export const LIGHTNING_LAYER_ID = 'livewx-lightning-strikes-icon';
 export const LIGHTNING_ICON_ID = 'livewx-lightning-bolt';
 export const LIGHTNING_LEGACY_CIRCLE_ID = 'livewx-lightning-strikes-circle';
+export const TRACKS_SOURCE_ID = 'livewx-tracks';
+export const TRACKS_LINE_ID = 'livewx-tracks-line';
+export const TRACKS_FCST_LINE_ID = 'livewx-tracks-fcst-line';
+export const TRACKS_FCST_ID = 'livewx-tracks-fcst';
+export const TRACKS_CELL_ID = 'livewx-tracks-cell';
+export const TRACKS_LABEL_ID = 'livewx-tracks-label';
 
 export const CONUS_SITE_ID = 'CONUS';
 export const IEM_TMS_BASE = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0';
 export const IEM_JSON_BASE = 'https://mesonet.agron.iastate.edu/json';
 export const NWS_ALERTS_URL = 'https://api.weather.gov/alerts/active';
+export const IEM_NEXRAD_ATTR_URL = 'https://mesonet.agron.iastate.edu/geojson/nexrad_attr.py';
 
 export const STORAGE_KEY = 'livewx-radar-settings';
 export const REFRESH_MS = 60_000;
 export const ALERT_POLL_MS = 60_000;
+export const TRACK_POLL_MS = 60_000;
 export const PROTOCOL_NAME = 'livewx';
 
 export const DEFAULT_OPACITY = 0.7;

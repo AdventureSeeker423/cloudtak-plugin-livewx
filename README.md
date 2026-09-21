@@ -1,6 +1,6 @@
 # LiveWX Radar
 
-CloudTAK plugin that overlays live NEXRAD imagery, nationwide NWS watches/warnings, and live lightning on the map.
+CloudTAK plugin that overlays live NEXRAD imagery, nationwide NWS watches/warnings, live lightning, and storm tracks on the map.
 
 Requires CloudTAK **13.45** or newer.
 
@@ -13,6 +13,7 @@ Requires CloudTAK **13.45** or newer.
 - Transparency and a min-value **filter** slider (hide weak reflectivity / slow velocity).
 - Optional **watches and warnings** from `api.weather.gov` — nationwide, not scoped to the selected radar.
 - Optional **lightning** from Blitzortung — off by default; when on, strikes in the current map view show as lightning bolts that fade from white to yellow to orange to dark red over the strike lifetime (default 120s). The public websocket is **live only**; turning Lightning on does not backfill strikes from before that moment.
+- Optional **storm tracks** from IEM NEXRAD storm attributes — off by default; nationwide cells with a 60-minute forecast path. Color: red TVS, orange mesocyclone, yellow hail, cyan otherwise. Client-side only (no TAK/CoT).
 - Simple last-hour **replay** when IEM has archive frames.
 
 Imagery is pre-rendered IEM tiles (CONUS mosaic and per-site RIDGE). Product names are NWS/IEM Level 2 and Level 3 codes; defaults are N0B reflectivity and N0G velocity.
@@ -51,7 +52,7 @@ Symlink this checkout to `CloudTAK/api/web/plugins/livewx-radar`, run `npm insta
 
 ## Attribution
 
-- Radar tiles: [Iowa Environmental Mesonet](https://mesonet.agron.iastate.edu/ogc/)
+- Radar tiles and storm attributes: [Iowa Environmental Mesonet](https://mesonet.agron.iastate.edu/ogc/)
 - Watches and warnings: [National Weather Service API](https://www.weather.gov/documentation/services-web-api)
 - Lightning: [Blitzortung.org](https://www.blitzortung.org/) and contributors. Lightning overlay adapted from [cmlaird/CloudTAK-Plugin-Lightning](https://github.com/cmlaird/CloudTAK-Plugin-Lightning) (MIT).
 - Site list and product taxonomy adapted from [Supercell Wx](https://github.com/dpaulat/supercell-wx) (MIT)
