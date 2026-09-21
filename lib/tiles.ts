@@ -79,7 +79,6 @@ type ProtocolResult = { data: ArrayBuffer | ImageBitmap | ImageData };
 
 async function handleProtocol(
     params: ProtocolParams,
-    _abort?: AbortController,
 ): Promise<ProtocolResult> {
     const raw = params.url ?? '';
     const parsed = new URL(httpsFromProtocol(raw));
