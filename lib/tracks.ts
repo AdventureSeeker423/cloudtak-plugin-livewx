@@ -33,6 +33,7 @@ interface AttrProps {
     top?: number | string;
     drct?: number | string;
     sknt?: number | string;
+    range?: number | string;
     valid?: string;
 }
 
@@ -61,6 +62,20 @@ const NM_KM = 1.852;
 const FCST_MIN = [15, 30, 45, 60];
 const HISTORY_MAX = 8;
 const MOVE_MIN_KM = 0.4;
+const MERGE_KM = 32;
+const MERGE_DIR_DEG = 55;
+const MERGE_SPEED_KT = 18;
+
+type Cell = {
+    lon: number;
+    lat: number;
+    nexrad: string;
+    id: string;
+    props: AttrProps;
+    sknt: number;
+    drct: number;
+    score: number;
+};
 
 const POPUP_STYLE_ID = 'livewx-track-popup-style';
 
@@ -82,19 +97,8 @@ function emptyCollection(): GeoCollection {
     return { type: 'FeatureCollection', features: [] };
 }
 
-function stormKey(nexrad: string, id: string): string {
-    return `${nexrad}-${id}`;
-}
-
-function stormColor(props: AttrProps): string {
-    const tvs = text(props.tvs).toUpperCase();
-    if (tvs && tvs !== 'NONE' && tvs !== '0') return '#ff1744';
-    const meso = text(props.meso).toUpperCase();
-    if (meso && meso !== 'NONE' && meso !== '0') return '#ff9100';
-    if (num(props.posh) >= 50 || num(props.max_size) >= 1) return '#ffd43b';
-    if (num(props.poh) >= 50) return '#fab005';
-    return '#66d9e8';
-}
+const TRACK_COLOR = '#ffffff';
+const TICK_HALF_KM = 1.6;
 
 function dest(lon: number, lat: number, bearingDeg: number, km: number): number[] {
     const brng = bearingDeg * Math.PI / 180;
@@ -139,9 +143,66 @@ function remember(key: string, lon: number, lat: number): Array<{ lon: number; l
     return prev;
 }
 
-function buildCollection(raw: AttrCollection): GeoCollection {
-    const features: GeoFeature[] = [];
-    const seen = new Set<string>();
+function rememberNear(lon: number, lat: number): { key: string; pts: Array<{ lon: number; lat: number }> } {
+    let bestKey = '';
+    let bestD = MERGE_KM;
+    for (const [key, pts] of history) {
+        const last = pts[pts.length - 1];
+        if (!last) continue;
+        const d = distKm(last, lon, lat);
+        if (d < bestD) {
+            bestD = d;
+            bestKey = key;
+        }
+    }
+    const key = bestKey || `${lon.toFixed(3)},${lat.toFixed(3)}`;
+    return { key, pts: remember(key, lon, lat) };
+}
+
+function angleDiff(a: number, b: number): number {
+    const d = Math.abs(a - b) % 360;
+    return d > 180 ? 360 - d : d;
+}
+
+function stormQuality(props: AttrProps): number {
+    let score = 0;
+    const tvs = text(props.tvs).toUpperCase();
+    if (tvs && tvs !== 'NONE' && tvs !== '0') score += 1000;
+    const meso = text(props.meso);
+    const mesoN = Number(meso);
+    if (Number.isFinite(mesoN) && mesoN > 0) score += mesoN * 20;
+    else if (meso && meso.toUpperCase() !== 'NONE' && meso !== '0') score += 80;
+    score += num(props.posh) * 3;
+    score += num(props.poh);
+    score += num(props.max_size) * 50;
+    score += num(props.vil) * 3;
+    score += num(props.max_dbz);
+    if (num(props.sknt) > 0) score += 25;
+    score += Math.max(0, 100 - num(props.range)) * 0.5;
+    return score;
+}
+
+function sameStorm(a: Cell, b: Cell): boolean {
+    if (distKm({ lon: a.lon, lat: a.lat }, b.lon, b.lat) > MERGE_KM) return false;
+    if (a.sknt >= 8 && b.sknt >= 8) {
+        if (angleDiff(a.drct, b.drct) > MERGE_DIR_DEG) return false;
+        if (Math.abs(a.sknt - b.sknt) > MERGE_SPEED_KT) return false;
+    }
+    return true;
+}
+
+function pickBest(cells: Cell[]): Cell[] {
+    const sorted = [...cells].sort((a, b) => b.score - a.score);
+    const kept: Cell[] = [];
+    for (const cell of sorted) {
+        if (kept.some((other) => sameStorm(other, cell))) continue;
+        kept.push(cell);
+    }
+    return kept;
+}
+
+function parseCells(raw: AttrCollection): Cell[] {
+    const cells: Cell[] = [];
     for (const f of raw.features ?? []) {
         const coords = f.geometry?.coordinates;
         if (!coords || f.geometry?.type !== 'Point' || coords.length < 2) continue;
@@ -152,16 +213,33 @@ function buildCollection(raw: AttrCollection): GeoCollection {
         const nexrad = text(props.nexrad);
         const id = text(props.storm_id);
         if (!nexrad || !id) continue;
-        const key = stormKey(nexrad, id);
-        seen.add(key);
-        const color = stormColor(props);
+        cells.push({
+            lon,
+            lat,
+            nexrad,
+            id,
+            props,
+            sknt: num(props.sknt),
+            drct: num(props.drct),
+            score: stormQuality(props),
+        });
+    }
+    return cells;
+}
+
+function buildCollection(raw: AttrCollection): GeoCollection {
+    const features: GeoFeature[] = [];
+    const seen = new Set<string>();
+    for (const cell of pickBest(parseCells(raw))) {
+        const { lon, lat, nexrad, id, props } = cell;
         const label = `${nexrad} ${id}`;
-        const past = remember(key, lon, lat);
-        const pastLine = past.map((p) => [p.lon, p.lat]);
+        const trail = rememberNear(lon, lat);
+        seen.add(trail.key);
+        const pastLine = trail.pts.map((p) => [p.lon, p.lat]);
         if (pastLine.length > 1) {
             features.push({
                 type: 'Feature',
-                properties: { kind: 'past', color, label },
+                properties: { kind: 'past', label },
                 geometry: { type: 'LineString', coordinates: pastLine },
             });
         }
@@ -175,13 +253,19 @@ function buildCollection(raw: AttrCollection): GeoCollection {
                 forecast.push(pt);
                 features.push({
                     type: 'Feature',
-                    properties: { kind: 'fcst', color, label, minutes: min },
-                    geometry: { type: 'Point', coordinates: pt },
+                    properties: { kind: 'tick', label, minutes: min },
+                    geometry: {
+                        type: 'LineString',
+                        coordinates: [
+                            dest(pt[0], pt[1], drct - 90, TICK_HALF_KM),
+                            dest(pt[0], pt[1], drct + 90, TICK_HALF_KM),
+                        ],
+                    },
                 });
             }
             features.push({
                 type: 'Feature',
-                properties: { kind: 'forecast', color, label },
+                properties: { kind: 'forecast', label },
                 geometry: { type: 'LineString', coordinates: forecast },
             });
         }
@@ -189,7 +273,6 @@ function buildCollection(raw: AttrCollection): GeoCollection {
             type: 'Feature',
             properties: {
                 kind: 'cell',
-                color,
                 label,
                 nexrad,
                 storm_id: id,
@@ -235,9 +318,9 @@ function ensureLayers(map: LiveWxMap): void {
             source: TRACKS_SOURCE_ID,
             filter: ['==', ['get', 'kind'], 'past'],
             paint: {
-                'line-color': ['coalesce', ['get', 'color'], '#66d9e8'],
-                'line-width': 2,
-                'line-opacity': 0.9,
+                'line-color': TRACK_COLOR,
+                'line-width': 1.75,
+                'line-opacity': 0.95,
             },
         }, before);
     }
@@ -248,28 +331,24 @@ function ensureLayers(map: LiveWxMap): void {
             source: TRACKS_SOURCE_ID,
             filter: ['==', ['get', 'kind'], 'forecast'],
             paint: {
-                'line-color': ['coalesce', ['get', 'color'], '#66d9e8'],
-                'line-width': 2,
-                'line-opacity': 0.85,
-                'line-dasharray': [3, 2],
+                'line-color': TRACK_COLOR,
+                'line-width': 1.75,
+                'line-opacity': 0.95,
             },
         }, before);
     }
-    if (!map.getLayer(TRACKS_FCST_ID)) {
-        map.addLayer({
-            id: TRACKS_FCST_ID,
-            type: 'circle',
-            source: TRACKS_SOURCE_ID,
-            filter: ['==', ['get', 'kind'], 'fcst'],
-            paint: {
-                'circle-radius': 3,
-                'circle-color': ['coalesce', ['get', 'color'], '#66d9e8'],
-                'circle-stroke-color': '#000000',
-                'circle-stroke-width': 1,
-                'circle-opacity': 0.9,
-            },
-        }, before);
-    }
+    try { if (map.getLayer(TRACKS_FCST_ID)) map.removeLayer(TRACKS_FCST_ID); } catch { /* ignore */ }
+    map.addLayer({
+        id: TRACKS_FCST_ID,
+        type: 'line',
+        source: TRACKS_SOURCE_ID,
+        filter: ['==', ['get', 'kind'], 'tick'],
+        paint: {
+            'line-color': TRACK_COLOR,
+            'line-width': 1.75,
+            'line-opacity': 0.95,
+        },
+    }, before);
     if (!map.getLayer(TRACKS_CELL_ID)) {
         map.addLayer({
             id: TRACKS_CELL_ID,
@@ -277,10 +356,10 @@ function ensureLayers(map: LiveWxMap): void {
             source: TRACKS_SOURCE_ID,
             filter: ['==', ['get', 'kind'], 'cell'],
             paint: {
-                'circle-radius': 6,
-                'circle-color': ['coalesce', ['get', 'color'], '#66d9e8'],
+                'circle-radius': 3.5,
+                'circle-color': TRACK_COLOR,
                 'circle-stroke-color': '#000000',
-                'circle-stroke-width': 1.25,
+                'circle-stroke-width': 1,
             },
         }, before);
     }
@@ -293,12 +372,12 @@ function ensureLayers(map: LiveWxMap): void {
             layout: {
                 'text-field': ['get', 'label'],
                 'text-size': 11,
-                'text-offset': [0, 1.05],
+                'text-offset': [0, 0.9],
                 'text-anchor': 'top',
                 'text-optional': true,
             },
             paint: {
-                'text-color': ['coalesce', ['get', 'color'], '#66d9e8'],
+                'text-color': TRACK_COLOR,
                 'text-halo-color': '#000000',
                 'text-halo-width': 1.25,
             },

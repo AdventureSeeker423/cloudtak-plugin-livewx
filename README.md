@@ -13,7 +13,7 @@ Requires CloudTAK **13.45** or newer.
 - Transparency and a min-value **filter** slider (hide weak reflectivity / slow velocity).
 - Optional **watches and warnings** from `api.weather.gov` — nationwide, not scoped to the selected radar.
 - Optional **lightning** from Blitzortung — off by default; when on, strikes in the current map view show as lightning bolts that fade from white to yellow to orange to dark red over the strike lifetime (default 120s). The public websocket is **live only**; turning Lightning on does not backfill strikes from before that moment.
-- Optional **storm tracks** from IEM NEXRAD storm attributes — off by default; nationwide cells with a 60-minute forecast path. Color: red TVS, orange mesocyclone, yellow hail, cyan otherwise. Client-side only (no TAK/CoT).
+- Optional **storm tracks** from IEM NEXRAD storm attributes — off by default; nationwide cells with a white 60-minute forecast line and hash marks every 15 minutes. Overlapping reports of the same cell from multiple radars are collapsed to the best track. Client-side only (no TAK/CoT).
 - Simple last-hour **replay** when IEM has archive frames.
 
 Imagery is pre-rendered IEM tiles (CONUS mosaic and per-site RIDGE). Product names are NWS/IEM Level 2 and Level 3 codes; defaults are N0B reflectivity and N0G velocity.

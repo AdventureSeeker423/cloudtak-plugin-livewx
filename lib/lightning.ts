@@ -138,6 +138,11 @@ function inBounds(lat: number, lon: number, box: { west: number; east: number; s
 
 const BOLT_SIZE = 64;
 const BOLT_SPREAD = 8;
+const ICON_SIZE: unknown[] = [
+    'interpolate', ['linear'], ['get', 'ageFrac'],
+    0.0, 1.75,
+    1.0, 1.2,
+];
 const AGE_COLOR: unknown[] = [
     'interpolate', ['linear'], ['get', 'ageFrac'],
     0.0, '#ffffff',
@@ -287,11 +292,7 @@ function ensureLayers(): void {
                         'icon-ignore-placement': true,
                         'icon-anchor': 'center',
                         'icon-padding': 0,
-                        'icon-size': [
-                            'interpolate', ['linear'], ['get', 'ageFrac'],
-                            0.0, 0.9,
-                            1.0, 0.5,
-                        ],
+                        'icon-size': ICON_SIZE,
                     },
                     paint: {
                         'icon-color': AGE_COLOR,
@@ -301,7 +302,7 @@ function ensureLayers(): void {
                             1.0, 0.45,
                         ],
                         'icon-halo-color': '#000000',
-                        'icon-halo-width': 1,
+                        'icon-halo-width': 1.25,
                     },
                 });
             } else {
@@ -313,8 +314,8 @@ function ensureLayers(): void {
                         'circle-color': AGE_COLOR,
                         'circle-radius': [
                             'interpolate', ['linear'], ['get', 'ageFrac'],
-                            0.0, 7,
-                            1.0, 3,
+                            0.0, 12,
+                            1.0, 7,
                         ],
                         'circle-opacity': [
                             'interpolate', ['linear'], ['get', 'ageFrac'],
@@ -326,6 +327,8 @@ function ensureLayers(): void {
                     },
                 });
             }
+        } else {
+            try { map.setLayoutProperty?.(LIGHTNING_LAYER_ID, 'icon-size', ICON_SIZE); } catch { /* ignore */ }
         }
         raiseLightning(map);
     } catch {
