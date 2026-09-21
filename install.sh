@@ -8,6 +8,8 @@
 # api/web/plugins/<name>/, then rebuild + restart the API image.
 #
 # This script:
+#   • fetch the newest plugin source (git pull, or clone GitHub if this
+#     folder is a marketplace copy without its own .git)
 #   • copy plugin sources → <CloudTAK>/api/web/plugins/livewx-radar/
 #   • rebuild + restart the CloudTAK API image so the plugin is baked in.
 #
@@ -20,22 +22,41 @@
 #                       Optional. If omitted (or the given path is missing), the
 #                       script uses the first of: $CLOUDTAK, ~/CloudTAK,
 #                       /home/takwerx/CloudTAK, /home/*/CloudTAK.
-#   --no-pull           Skip git pull (deploy whatever is already in this checkout).
+#   --no-pull           Skip git fetch (deploy whatever is already in this checkout).
 #   --pull              No-op; pull is the default on install/update.
 #   --no-build          Copy/remove files only; skip the docker rebuild + restart.
 #   --remove            Uninstall: delete the copied files, then rebuild.
 #
 # Requires: bash; git (unless --no-pull or --remove); and (unless --no-build) docker + docker compose.
+#
+# Env:
+#   LIVEWX_GIT_URL      Override the GitHub clone URL.
+#   LIVEWX_GIT_REF      Override the branch/tag (default: main).
 
 set -euo pipefail
 
 INSTALL_DIR_NAME="livewx-radar"
+PLUGIN_GIT_URL="${LIVEWX_GIT_URL:-https://github.com/AdventureSeeker423/cloudtak-plugin-livewx.git}"
+PLUGIN_GIT_REF="${LIVEWX_GIT_REF:-main}"
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SOURCE_DIR="$REPO_DIR"
+FETCH_DIR=""
 
 usage() {
     sed -n '/^# Usage:/,/^# Requires:/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
+
+canon() {
+    (cd "$1" && pwd -P)
+}
+
+cleanup_fetch() {
+    if [ -n "${FETCH_DIR:-}" ] && [ -d "$FETCH_DIR" ]; then
+        rm -rf "$FETCH_DIR"
+    fi
+}
+trap cleanup_fetch EXIT
 
 CT_DIR=""
 DO_BUILD=1
@@ -83,6 +104,42 @@ find_cloudtak() {
     return 1
 }
 
+# Newest plugin files: pull this repo if it is the git root, otherwise clone GitHub.
+# Marketplace copies live under cloudtak-marketplace-plugins/ and have no plugin .git,
+# so a plain `git pull` either no-ops or updates the parent marketplace repo instead.
+pull_newest_source() {
+    if ! command -v git >/dev/null 2>&1; then
+        echo "ERROR: git is required to pull the newest plugin source (or pass --no-pull)." >&2
+        exit 1
+    fi
+
+    local git_root
+    git_root="$(git -C "$REPO_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
+
+    if [ -n "$git_root" ] && [ "$(canon "$git_root")" = "$(canon "$REPO_DIR")" ]; then
+        echo "Pulling latest plugin source from origin ($PLUGIN_GIT_REF)..."
+        if ! git -C "$REPO_DIR" remote get-url origin >/dev/null 2>&1; then
+            git -C "$REPO_DIR" remote add origin "$PLUGIN_GIT_URL"
+        fi
+        git -C "$REPO_DIR" fetch --tags origin "$PLUGIN_GIT_REF"
+        if [ -n "$(git -C "$REPO_DIR" status --porcelain)" ]; then
+            echo "WARNING: uncommitted local changes — deploying this working tree (not resetting to origin)."
+        else
+            git -C "$REPO_DIR" merge --ff-only FETCH_HEAD
+        fi
+        git -C "$REPO_DIR" log -1 --oneline
+        SOURCE_DIR="$REPO_DIR"
+        return 0
+    fi
+
+    echo "This folder is not the plugin git root (marketplace copy or nested tree)."
+    echo "Cloning $PLUGIN_GIT_REF from $PLUGIN_GIT_URL ..."
+    FETCH_DIR="$(mktemp -d "${TMPDIR:-/tmp}/livewx-radar.XXXXXX")"
+    git clone --depth 1 --branch "$PLUGIN_GIT_REF" "$PLUGIN_GIT_URL" "$FETCH_DIR"
+    SOURCE_DIR="$FETCH_DIR"
+    git -C "$SOURCE_DIR" log -1 --oneline
+}
+
 REQUESTED="$CT_DIR"
 if [ -n "$CT_DIR" ] && looks_like_cloudtak "$CT_DIR"; then
     :
@@ -124,14 +181,8 @@ if [ "$ACTION" = "remove" ]; then
 fi
 
 if [ "$DO_PULL" -eq 1 ]; then
-    if [ ! -d "$REPO_DIR/.git" ]; then
-        echo "Skipping git pull (not a git checkout)."
-        echo
-    else
-        echo "Pulling latest plugin source..."
-        git -C "$REPO_DIR" pull
-        echo
-    fi
+    pull_newest_source
+    echo
 fi
 
 if [ "$ACTION" = "remove" ]; then
@@ -140,19 +191,20 @@ if [ "$ACTION" = "remove" ]; then
         echo "Removed web plugin: api/web/plugins/$INSTALL_DIR_NAME"
     fi
 else
-    if [ ! -f "$REPO_DIR/index.ts" ]; then
-        echo "ERROR: $REPO_DIR/index.ts not found — run this from the plugin repo." >&2
+    if [ ! -f "$SOURCE_DIR/index.ts" ]; then
+        echo "ERROR: $SOURCE_DIR/index.ts not found — run this from the plugin repo." >&2
         exit 1
     fi
     mkdir -p "$CT_DIR/api/web/plugins"
 
     rm -rf "$WEB_DEST"
     mkdir -p "$WEB_DEST/lib" "$WEB_DEST/data"
-    cp "$REPO_DIR/index.ts" "$REPO_DIR/package.json" "$REPO_DIR/tsconfig.json" \
-        "$REPO_DIR/eslint.config.js" "$REPO_DIR/env.d.ts" "$WEB_DEST/"
-    cp -R "$REPO_DIR/lib/." "$WEB_DEST/lib/"
-    cp -R "$REPO_DIR/data/." "$WEB_DEST/data/"
+    cp "$SOURCE_DIR/index.ts" "$SOURCE_DIR/package.json" "$SOURCE_DIR/tsconfig.json" \
+        "$SOURCE_DIR/eslint.config.js" "$SOURCE_DIR/env.d.ts" "$WEB_DEST/"
+    cp -R "$SOURCE_DIR/lib/." "$WEB_DEST/lib/"
+    cp -R "$SOURCE_DIR/data/." "$WEB_DEST/data/"
     echo "Installed web plugin: api/web/plugins/$INSTALL_DIR_NAME"
+    echo "  source: $SOURCE_DIR"
 fi
 
 echo
