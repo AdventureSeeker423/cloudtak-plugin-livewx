@@ -1,42 +1,59 @@
 <template>
     <div
-        class="position-absolute start-0 top-0 bottom-0 end-0"
-        :style="`z-index: ${zindex}`"
+        class='position-absolute start-0 top-0 bottom-0 end-0'
+        :style='`z-index: ${zindex}`'
     >
         <div
-            class="card h-100"
-            :class="{ 'border-0': !border }"
+            class='card h-100'
+            :class='{ "border-0": !border }'
         >
-            <div class="card-header d-flex align-items-center py-2" v-if="name">
-                <h3 class="card-title mb-0">{{ name }}</h3>
-                <div class="ms-auto d-flex align-items-center">
-                    <slot name="buttons"></slot>
+            <div
+                v-if='name'
+                class='card-header d-flex align-items-center py-2'
+            >
+                <h3 class='card-title mb-0'>
+                    {{ name }}
+                </h3>
+                <div class='ms-auto d-flex align-items-center'>
+                    <slot name='buttons' />
                     <TablerIconButton
-                        v-if="backType === 'close'"
-                        title="Close"
-                        @click="router.push('/')"
+                        v-if='backType === "close"'
+                        title='Close'
+                        @click='router.push("/")'
                     >
-                        <IconCircleX :size="20" stroke="1" />
+                        <IconCircleX
+                            :size='20'
+                            stroke='1'
+                        />
                     </TablerIconButton>
                     <TablerIconButton
-                        v-else-if="backType === 'back'"
-                        title="Back"
-                        @click="routerBack"
+                        v-else-if='backType === "back"'
+                        title='Back'
+                        @click='routerBack'
                     >
-                        <IconCircleArrowLeft :size="20" stroke="1" />
+                        <IconCircleArrowLeft
+                            :size='20'
+                            stroke='1'
+                        />
                     </TablerIconButton>
                 </div>
             </div>
-            <div class="card-body overflow-auto">
-                <TablerLoading v-if="loading" desc="Loading" />
-                <TablerNone v-else-if="none" :label="name" />
-                <slot v-else></slot>
+            <div class='card-body overflow-auto'>
+                <TablerLoading
+                    v-if='loading'
+                    desc='Loading'
+                />
+                <TablerNone
+                    v-else-if='none'
+                    :label='name'
+                />
+                <slot v-else />
             </div>
         </div>
     </div>
 </template>
 
-<script setup lang="ts">
+<script setup lang='ts'>
 import {
     TablerNone,
     TablerLoading,
