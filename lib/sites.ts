@@ -1,5 +1,5 @@
 import rawSites from '../data/radar_sites.json';
-import { CONUS_SITE_ID } from './constants.ts';
+import { CONUS_SITE_ID, TDWR_RANGE_KM, WSR88D_RANGE_KM } from './constants.ts';
 
 export interface RadarSite {
     type: string;
@@ -49,6 +49,38 @@ export function toIemId(icao: string): string {
     if (id.startsWith('T') && id.length === 4) return id;
     if (id.length === 4) return id.slice(1);
     return id;
+}
+
+export function siteRangeKm(site: RadarSite): number {
+    return site.type === 'tdwr' ? TDWR_RANGE_KM : WSR88D_RANGE_KM;
+}
+
+export function kmBetween(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371.0088;
+    const toRad = (d: number) => d * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat / 2) ** 2
+        + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+/** Null when CONUS/mosaic — lightning and tracks stay nationwide. */
+export function coverageForSiteId(id: string): {
+    lat: number;
+    lon: number;
+    km: number;
+    iemId: string;
+} | null {
+    if (isMosaic(id)) return null;
+    const site = findSite(id);
+    if (!site || site.type === 'mosaic') return null;
+    return {
+        lat: site.lat,
+        lon: site.lon,
+        km: siteRangeKm(site),
+        iemId: toIemId(site.id),
+    };
 }
 
 export function siteLabel(site: RadarSite): string {

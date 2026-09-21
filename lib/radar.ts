@@ -14,6 +14,7 @@ import {
     destroyLightning,
     initLightning,
     raiseLightningLayer,
+    refreshLightningView,
     restoreLightningLayers,
 } from './lightning.ts';
 import type { LiveWxMap } from './map-types.ts';
@@ -29,7 +30,7 @@ import type { RadarProduct } from './products.ts';
 import { refreshSiteMarkers, startSiteMarkers, stopSiteMarkers } from './site-markers.ts';
 import { findSite, isMosaic, toIemId } from './sites.ts';
 import { persist, setSite, state } from './state.ts';
-import { restoreTracks, startTracks, stopTracks } from './tracks.ts';
+import { refreshTracks, restoreTracks, startTracks, stopTracks } from './tracks.ts';
 import { syncSidebarTheme } from './theme.ts';
 import {
     ensureFilterProtocol,
@@ -380,6 +381,8 @@ export async function setOverlayEnabled(enabled: boolean): Promise<void> {
 export async function applyRadarSettings(): Promise<void> {
     persist();
     refreshSiteMarkers();
+    refreshLightningView();
+    if (state.tracksEnabled) refreshTracks();
     if (!state.overlayEnabled) {
         state.status = statusText();
         return;

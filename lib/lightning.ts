@@ -12,6 +12,7 @@ import {
     LIGHTNING_SOURCE_ID,
 } from './constants.ts';
 import type { LiveWxMap } from './map-types.ts';
+import { coverageForSiteId, kmBetween } from './sites.ts';
 import { state } from './state.ts';
 
 export interface Strike {
@@ -227,12 +228,19 @@ function pruneStrikes(): void {
     }
 }
 
+function inSelectedRange(lat: number, lon: number): boolean {
+    const cov = coverageForSiteId(state.siteId);
+    if (!cov) return true;
+    return kmBetween(cov.lat, cov.lon, lat, lon) <= cov.km;
+}
+
 function visibleStrikes(): VisibleStrike[] {
     const box = paddedBounds();
     const center = mapOf()?.getCenter?.();
-    const list = box
-        ? lightning.strikes.filter((s) => inBounds(s.lat, s.lon, box))
-        : lightning.strikes;
+    const list = lightning.strikes.filter((s) => (
+        inSelectedRange(s.lat, s.lon)
+        && (!box || inBounds(s.lat, s.lon, box))
+    ));
     if (!center) {
         return list.map((s) => ({ ...s, distMi: 0, compass: '' }));
     }
@@ -499,6 +507,10 @@ export function destroyLightning(): void {
     lightning.error = '';
     removeLayers();
     apiRef = null;
+}
+
+export function refreshLightningView(): void {
+    renderStrikes();
 }
 
 export function applyLightning(): void {

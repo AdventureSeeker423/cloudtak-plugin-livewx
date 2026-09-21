@@ -16,6 +16,7 @@ import {
 } from './constants.ts';
 import { raiseLightningLayer } from './lightning.ts';
 import type { LiveWxMap } from './map-types.ts';
+import { coverageForSiteId, kmBetween } from './sites.ts';
 import { state } from './state.ts';
 import { SURFACE_BG, SURFACE_BORDER, SURFACE_FG, syncSidebarTheme } from './theme.ts';
 
@@ -62,9 +63,12 @@ const NM_KM = 1.852;
 const FCST_MIN = [15, 30, 45, 60];
 const HISTORY_MAX = 8;
 const MOVE_MIN_KM = 0.4;
-const MERGE_KM = 32;
-const MERGE_DIR_DEG = 55;
-const MERGE_SPEED_KT = 18;
+const MERGE_KM = 18;
+const MERGE_DIR_DEG = 40;
+const MERGE_SPEED_KT = 15;
+const MAX_ATTR_RANGE_MI = 124;
+const MIN_TRACK_KT = 5;
+const MAX_TRACK_KT = 80;
 
 type Cell = {
     lon: number;
@@ -74,6 +78,7 @@ type Cell = {
     props: AttrProps;
     sknt: number;
     drct: number;
+    range: number;
     score: number;
 };
 
@@ -143,22 +148,6 @@ function remember(key: string, lon: number, lat: number): Array<{ lon: number; l
     return prev;
 }
 
-function rememberNear(lon: number, lat: number): { key: string; pts: Array<{ lon: number; lat: number }> } {
-    let bestKey = '';
-    let bestD = MERGE_KM;
-    for (const [key, pts] of history) {
-        const last = pts[pts.length - 1];
-        if (!last) continue;
-        const d = distKm(last, lon, lat);
-        if (d < bestD) {
-            bestD = d;
-            bestKey = key;
-        }
-    }
-    const key = bestKey || `${lon.toFixed(3)},${lat.toFixed(3)}`;
-    return { key, pts: remember(key, lon, lat) };
-}
-
 function angleDiff(a: number, b: number): number {
     const d = Math.abs(a - b) % 360;
     return d > 180 ? 360 - d : d;
@@ -192,7 +181,11 @@ function sameStorm(a: Cell, b: Cell): boolean {
 }
 
 function pickBest(cells: Cell[]): Cell[] {
-    const sorted = [...cells].sort((a, b) => b.score - a.score);
+    if (coverageForSiteId(state.siteId)) return cells;
+    const sorted = [...cells].sort((a, b) => {
+        if (a.range !== b.range) return a.range - b.range;
+        return b.score - a.score;
+    });
     const kept: Cell[] = [];
     for (const cell of sorted) {
         if (kept.some((other) => sameStorm(other, cell))) continue;
@@ -202,6 +195,7 @@ function pickBest(cells: Cell[]): Cell[] {
 }
 
 function parseCells(raw: AttrCollection): Cell[] {
+    const cov = coverageForSiteId(state.siteId);
     const cells: Cell[] = [];
     for (const f of raw.features ?? []) {
         const coords = f.geometry?.coordinates;
@@ -213,6 +207,10 @@ function parseCells(raw: AttrCollection): Cell[] {
         const nexrad = text(props.nexrad);
         const id = text(props.storm_id);
         if (!nexrad || !id) continue;
+        if (cov && nexrad !== cov.iemId) continue;
+        if (cov && kmBetween(cov.lat, cov.lon, lat, lon) > cov.km) continue;
+        const range = num(props.range);
+        if (range > MAX_ATTR_RANGE_MI) continue;
         cells.push({
             lon,
             lat,
@@ -221,6 +219,7 @@ function parseCells(raw: AttrCollection): Cell[] {
             props,
             sknt: num(props.sknt),
             drct: num(props.drct),
+            range,
             score: stormQuality(props),
         });
     }
@@ -233,9 +232,9 @@ function buildCollection(raw: AttrCollection): GeoCollection {
     for (const cell of pickBest(parseCells(raw))) {
         const { lon, lat, nexrad, id, props } = cell;
         const label = `${nexrad} ${id}`;
-        const trail = rememberNear(lon, lat);
-        seen.add(trail.key);
-        const pastLine = trail.pts.map((p) => [p.lon, p.lat]);
+        const key = `${nexrad}-${id}`;
+        seen.add(key);
+        const pastLine = remember(key, lon, lat).map((p) => [p.lon, p.lat]);
         if (pastLine.length > 1) {
             features.push({
                 type: 'Feature',
@@ -246,7 +245,7 @@ function buildCollection(raw: AttrCollection): GeoCollection {
         const sknt = num(props.sknt);
         const drct = num(props.drct);
         const forecast: number[][] = [[lon, lat]];
-        if (sknt > 0) {
+        if (sknt >= MIN_TRACK_KT && sknt <= MAX_TRACK_KT) {
             for (const min of FCST_MIN) {
                 const km = sknt * (min / 60) * NM_KM;
                 const pt = dest(lon, lat, drct, km);
@@ -508,6 +507,11 @@ function onTrackClick(e: {
     const props = e.features?.[0]?.properties;
     if (!props) return;
     void showPopup(map, e.lngLat, props);
+}
+
+export function refreshTracks(): void {
+    history.clear();
+    if (mapRef) void refresh(mapRef);
 }
 
 export function startTracks(api: PluginAPI): void {
