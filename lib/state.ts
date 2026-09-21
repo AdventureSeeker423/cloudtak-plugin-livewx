@@ -23,11 +23,11 @@ export interface PersistedSettings {
     lightningEnabled: boolean;
     lightningStaleSec: number;
     tracksEnabled: boolean;
+    overlayEnabled: boolean;
     sitesOnMap: boolean;
 }
 
 export interface LiveWxState extends PersistedSettings {
-    overlayEnabled: boolean;
     playing: boolean;
     replayIndex: number;
     status: string;
@@ -47,6 +47,7 @@ function load(): PersistedSettings {
         lightningEnabled: false,
         lightningStaleSec: DEFAULT_LIGHTNING_STALE_SEC,
         tracksEnabled: false,
+        overlayEnabled: false,
         sitesOnMap: false,
     };
     try {
@@ -68,6 +69,7 @@ function load(): PersistedSettings {
                 defaults.lightningStaleSec,
             ),
             tracksEnabled: Boolean(parsed.tracksEnabled),
+            overlayEnabled: Boolean(parsed.overlayEnabled),
             sitesOnMap: Boolean(parsed.sitesOnMap),
         };
     } catch {
@@ -84,7 +86,6 @@ const persisted = load();
 
 export const state = reactive<LiveWxState>({
     ...persisted,
-    overlayEnabled: false,
     playing: false,
     replayIndex: -1,
     status: 'Overlay Off',
@@ -110,6 +111,7 @@ export function persist(): void {
         lightningEnabled: state.lightningEnabled,
         lightningStaleSec: state.lightningStaleSec,
         tracksEnabled: state.tracksEnabled,
+        overlayEnabled: state.overlayEnabled,
         sitesOnMap: state.sitesOnMap,
     };
     try {

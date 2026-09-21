@@ -15,6 +15,25 @@
                 Radar Overlay
             </label>
         </div>
+        <template v-if='state.overlayEnabled'>
+            <label
+                class='form-label mb-1'
+                for='livewx-opacity'
+            >
+                Opacity {{ Math.round(state.opacity * 100) }}%
+            </label>
+            <input
+                id='livewx-opacity'
+                class='form-range mb-3'
+                type='range'
+                min='0'
+                max='100'
+                step='1'
+                :value='Math.round(state.opacity * 100)'
+                @input='onOpacity'
+                @wheel.prevent='onOpacityWheel'
+            >
+        </template>
 
         <div class='form-check form-switch mb-3'>
             <input
@@ -99,24 +118,6 @@
         </p>
 
         <template v-if='state.overlayEnabled'>
-            <label
-                class='form-label mb-1'
-                for='livewx-opacity'
-            >
-                Opacity {{ Math.round(state.opacity * 100) }}%
-            </label>
-            <input
-                id='livewx-opacity'
-                class='form-range mb-3'
-                type='range'
-                min='0'
-                max='100'
-                step='1'
-                :value='Math.round(state.opacity * 100)'
-                @input='onOpacity'
-                @wheel.prevent='onOpacityWheel'
-            >
-
             <label
                 class='form-label mb-1'
                 for='livewx-site-search'

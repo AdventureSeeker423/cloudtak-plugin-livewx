@@ -6,7 +6,7 @@ Requires CloudTAK **13.45** or newer.
 
 ## What it does
 
-- Radar overlay **off by default**. Toggle it on from the plugin pane.
+- Radar overlay is **off on first install**, then remembers the last on/off setting.
 - **CONUS mosaic** is the default site (Iowa Mesonet `nexrad-n0q` tiles).
 - Pick a WSR-88D or TDWR site for single-radar RIDGE products (default Level 3 **N0B** reflectivity).
 - Level 2 names (REF, VEL, …) map to the closest IEM Level 3 image for this version.

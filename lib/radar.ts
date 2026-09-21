@@ -322,6 +322,7 @@ export async function init(api: PluginAPI): Promise<void> {
     if (state.sitesOnMap) startSiteMarkers(api, onSitePicked);
     if (state.tracksEnabled) startTracks(api);
     if (state.lightningEnabled) applyLightning();
+    if (state.overlayEnabled) void setOverlayEnabled(true);
     syncSidebarTheme();
 }
 
@@ -349,12 +350,12 @@ export function destroy(): void {
     detachRadarAgeControl();
     styleHandler = null;
     apiRef = null;
-    state.overlayEnabled = false;
     void removeFilterProtocol();
 }
 
 export async function setOverlayEnabled(enabled: boolean): Promise<void> {
     state.overlayEnabled = enabled;
+    persist();
     const map = mapOf();
     if (!enabled) {
         stopPlayTimer();
