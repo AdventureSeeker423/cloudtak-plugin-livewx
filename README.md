@@ -14,7 +14,7 @@ Requires CloudTAK **13.45** or newer.
 - Optional **watches and warnings** from `api.weather.gov` — nationwide, not scoped to the selected radar.
 - Simple last-hour **replay** when IEM has archive frames.
 
-Imagery is pre-rendered IEM tiles, not a port of Supercell Wx’s C++ Level 2 decoder. Product names, defaults (N0B / N0G), and the US site list follow [Supercell Wx](https://github.com/dpaulat/supercell-wx).
+Imagery is pre-rendered IEM tiles (CONUS mosaic and per-site RIDGE). Product names are NWS/IEM Level 2 and Level 3 codes; defaults are N0B reflectivity and N0G velocity.
 
 ## Install
 

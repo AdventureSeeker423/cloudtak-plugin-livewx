@@ -12,7 +12,7 @@ export interface RadarProduct {
     tdwrCode?: string;
 }
 
-/** Supercell Level 2 names mapped to the closest IEM Level 3 image. */
+/** Level 2 names mapped to the closest IEM Level 3 image. */
 const LEVEL2: RadarProduct[] = [
     { id: 'L2:REF', group: 'L2', category: 'REF', label: 'Reflectivity', iemCode: 'N0B', mosaicLayer: 'nexrad-n0q', filterKind: 'reflectivity', tdwrCode: 'TZL' },
     { id: 'L2:VEL', group: 'L2', category: 'VEL', label: 'Velocity', iemCode: 'N0U', filterKind: 'velocity', tdwrCode: 'TV0' },
@@ -22,7 +22,7 @@ const LEVEL2: RadarProduct[] = [
     { id: 'L2:RHO', group: 'L2', category: 'RHO', label: 'Correlation Coefficient', iemCode: 'N0C', filterKind: 'other' },
 ];
 
-/** Supercell Level 3 categories / AWIPS ids, limited to IEM RIDGE imagery. */
+/** Level 3 AWIPS ids, limited to IEM RIDGE imagery. */
 const LEVEL3: RadarProduct[] = [
     { id: 'L3:N0B', group: 'L3', category: 'REF', label: 'Reflectivity (N0B)', iemCode: 'N0B', mosaicLayer: 'nexrad-n0q', filterKind: 'reflectivity', tdwrCode: 'TZL' },
     { id: 'L3:N0Q', group: 'L3', category: 'REF', label: 'Reflectivity (N0Q)', iemCode: 'N0Q', mosaicLayer: 'nexrad-n0q', filterKind: 'reflectivity', tdwrCode: 'TZL' },
