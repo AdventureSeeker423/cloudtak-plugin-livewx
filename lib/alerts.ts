@@ -4,8 +4,17 @@ import {
     ALERT_LINE_ID,
     ALERT_POLL_MS,
     ALERT_SOURCE_ID,
+    LIGHTNING_LAYER_ID,
+    LIGHTNING_LEGACY_CIRCLE_ID,
     NWS_ALERTS_URL,
     RADAR_LAYER_ID,
+    SITES_CIRCLE_ID,
+    SITES_LABEL_ID,
+    TRACKS_CELL_ID,
+    TRACKS_FCST_ID,
+    TRACKS_FCST_LINE_ID,
+    TRACKS_LABEL_ID,
+    TRACKS_LINE_ID,
 } from './constants.ts';
 import type { LiveWxMap } from './map-types.ts';
 import { state } from './state.ts';
@@ -381,13 +390,41 @@ async function showPopup(
     }
 }
 
+const OVERLAY_HIT_LAYERS = [
+    TRACKS_CELL_ID,
+    TRACKS_LABEL_ID,
+    TRACKS_LINE_ID,
+    TRACKS_FCST_LINE_ID,
+    TRACKS_FCST_ID,
+    LIGHTNING_LAYER_ID,
+    LIGHTNING_LEGACY_CIRCLE_ID,
+    SITES_CIRCLE_ID,
+    SITES_LABEL_ID,
+];
+
+function presentLayers(map: LiveWxMap, ids: string[]): string[] {
+    return ids.filter((id) => Boolean(map.getLayer(id)));
+}
+
+function hitsAt(map: LiveWxMap, point: unknown, ids: string[]): Array<{ properties?: AlertProps }> {
+    const layers = presentLayers(map, ids);
+    if (!layers.length || !map.queryRenderedFeatures) return [];
+    try {
+        return map.queryRenderedFeatures(point, { layers }) as Array<{ properties?: AlertProps }>;
+    } catch {
+        return [];
+    }
+}
+
 function onAlertClick(e: {
     lngLat?: { lng: number; lat: number };
-    features?: Array<{ properties?: AlertProps }>;
+    point?: unknown;
 }): void {
     const map = mapRef;
-    if (!map || !e.lngLat) return;
-    const props = e.features?.[0]?.properties;
+    if (!map || !e.lngLat || e.point == null) return;
+    if (hitsAt(map, e.point, OVERLAY_HIT_LAYERS).length) return;
+    const hit = hitsAt(map, e.point, [ALERT_FILL_ID, ALERT_LINE_ID])[0];
+    const props = hit?.properties;
     if (!props) return;
     void showPopup(map, e.lngLat, props);
 }
@@ -396,10 +433,10 @@ export function startAlerts(api: PluginAPI): void {
     const map = api.map as unknown as LiveWxMap;
     mapRef = map;
     ensureAlertLayers(map);
+    map.off('click', onAlertClick);
     map.off('click', ALERT_FILL_ID, onAlertClick);
     map.off('click', ALERT_LINE_ID, onAlertClick);
-    map.on('click', ALERT_FILL_ID, onAlertClick);
-    map.on('click', ALERT_LINE_ID, onAlertClick);
+    map.on('click', onAlertClick);
     void refresh(map);
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = setInterval(() => {
@@ -416,6 +453,7 @@ export function stopAlerts(): void {
     popup = null;
     state.alertCount = 0;
     if (mapRef) {
+        try { mapRef.off('click', onAlertClick); } catch { /* ignore */ }
         try { mapRef.off('click', ALERT_FILL_ID, onAlertClick); } catch { /* ignore */ }
         try { mapRef.off('click', ALERT_LINE_ID, onAlertClick); } catch { /* ignore */ }
         removeAlertLayers(mapRef);
