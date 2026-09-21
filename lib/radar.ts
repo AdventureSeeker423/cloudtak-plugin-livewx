@@ -9,7 +9,14 @@ import {
     RIDGE_MAXZOOM,
 } from './constants.ts';
 import type { LiveWxMap } from './map-types.ts';
-import { FALLBACK_SITE_CODES, getProduct, mosaicProducts, productsForSite, siteCode } from './products.ts';
+import {
+    FALLBACK_SITE_CODES,
+    availableTilts,
+    getProduct,
+    mosaicProducts,
+    productsForSite,
+    siteCode,
+} from './products.ts';
 import type { RadarProduct } from './products.ts';
 import { refreshSiteMarkers, startSiteMarkers, stopSiteMarkers } from './site-markers.ts';
 import { findSite, isMosaic, toIemId } from './sites.ts';
@@ -108,6 +115,7 @@ function applyTiles(map: LiveWxMap): void {
         siteType: display.siteType,
         stamp: currentStamp(),
         filter: state.filter,
+        tilt: state.tilt,
         cacheBust,
     }, useProtocol);
 
@@ -127,7 +135,6 @@ function applyTiles(map: LiveWxMap): void {
         tileSize: 256,
         minzoom: 0,
         maxzoom: display.maxzoom,
-        attribution: 'Radar: Iowa Environmental Mesonet',
     });
     map.addLayer({
         id: RADAR_LAYER_ID,
@@ -164,11 +171,22 @@ async function loadAvailable(): Promise<void> {
     const codes = await fetchAvailableProducts(toIemId(state.siteId));
     availableCodes.value = codes && codes.length ? codes : FALLBACK_SITE_CODES;
     const visible = visibleProducts();
+    let changed = false;
     if (!visible.some((p) => p.id === state.productId)) {
         const fallback = visible.find((p) => p.category === 'REF') ?? visible[0];
-        if (fallback) state.productId = fallback.id;
-        persist();
+        if (fallback) {
+            state.productId = fallback.id;
+            changed = true;
+        }
     }
+    const product = currentProduct();
+    const site = findSite(state.siteId);
+    const tilts = availableTilts(product, site?.type ?? 'wsr88d', availableCodes.value);
+    if (tilts.length && !tilts.includes(state.tilt)) {
+        state.tilt = tilts[0];
+        changed = true;
+    }
+    if (changed) persist();
 }
 
 async function loadFrames(): Promise<void> {
@@ -203,7 +221,7 @@ async function loadFrames(): Promise<void> {
     const start = new Date(end.getTime() - 60 * 60 * 1000);
     frames = await fetchSiteScans(
         toIemId(site.id),
-        siteCode(product, site.type),
+        siteCode(product, site.type, state.tilt),
         start.toISOString().replace(/\.\d{3}Z$/, 'Z'),
         end.toISOString().replace(/\.\d{3}Z$/, 'Z'),
     );

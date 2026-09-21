@@ -10,6 +10,7 @@ import { isMosaic } from './sites.ts';
 export interface PersistedSettings {
     siteId: string;
     productId: string;
+    tilt: number;
     opacity: number;
     filter: number;
     alertsEnabled: boolean;
@@ -23,13 +24,13 @@ export interface LiveWxState extends PersistedSettings {
     status: string;
     error: string;
     alertCount: number;
-    selectedAlert: string;
 }
 
 function load(): PersistedSettings {
     const defaults: PersistedSettings = {
         siteId: CONUS_SITE_ID,
         productId: MOSAIC_DEFAULT_PRODUCT_ID,
+        tilt: 0,
         opacity: DEFAULT_OPACITY,
         filter: DEFAULT_FILTER,
         alertsEnabled: false,
@@ -42,6 +43,7 @@ function load(): PersistedSettings {
         return {
             siteId: typeof parsed.siteId === 'string' ? parsed.siteId : defaults.siteId,
             productId: typeof parsed.productId === 'string' ? parsed.productId : defaults.productId,
+            tilt: clamp(Number(parsed.tilt), 0, 9, defaults.tilt),
             opacity: clamp(Number(parsed.opacity), 0, 1, defaults.opacity),
             filter: clamp(Number(parsed.filter), 0, 75, defaults.filter),
             alertsEnabled: Boolean(parsed.alertsEnabled),
@@ -67,7 +69,6 @@ export const state = reactive<LiveWxState>({
     status: 'Overlay Off',
     error: '',
     alertCount: 0,
-    selectedAlert: '',
 });
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -80,6 +81,7 @@ export function persist(): void {
     const payload: PersistedSettings = {
         siteId: state.siteId,
         productId: state.productId,
+        tilt: state.tilt,
         opacity: state.opacity,
         filter: state.filter,
         alertsEnabled: state.alertsEnabled,
@@ -117,6 +119,11 @@ export function setSite(siteId: string): void {
 
 export function setProduct(productId: string): void {
     state.productId = productId;
+    persist();
+}
+
+export function setTilt(tilt: number): void {
+    state.tilt = clamp(tilt, 0, 9, 0);
     persist();
 }
 

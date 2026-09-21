@@ -4,7 +4,7 @@
         :style='`z-index: ${zindex}`'
     >
         <div
-            class='card h-100'
+            class='card h-100 livewx-shell'
             :class='{ "border-0": !border }'
         >
             <div
@@ -116,3 +116,24 @@ const backType = computed(() => {
     return 'back';
 });
 </script>
+
+<style scoped>
+.livewx-shell {
+    color: var(--tblr-navbar-color, var(--tblr-body-color, inherit));
+    background: var(--tblr-navbar-bg, var(--tblr-bg-surface, transparent));
+    border-color: var(--tblr-navbar-border-color, var(--tblr-border-color, transparent));
+}
+.livewx-shell :deep(.card-header) {
+    color: inherit;
+    background: transparent;
+    border-color: var(--tblr-navbar-border-color, var(--tblr-border-color, transparent));
+}
+.livewx-shell :deep(.card-body) {
+    background: transparent;
+}
+.livewx-shell :deep(.card-title),
+.livewx-shell :deep(.form-label),
+.livewx-shell :deep(.form-check-label) {
+    color: inherit;
+}
+</style>

@@ -1,6 +1,6 @@
 import { CONUS_SITE_ID, IEM_JSON_BASE, IEM_TMS_BASE, PROTOCOL_NAME } from './constants.ts';
 import { filterImageData } from './palette.ts';
-import { ALL_PRODUCTS, siteCode } from './products.ts';
+import { knownProductCodes, siteCode } from './products.ts';
 import type { FilterKind, RadarProduct } from './products.ts';
 import { isMosaic, toIemId } from './sites.ts';
 
@@ -10,6 +10,7 @@ export interface TileRequest {
     siteType: string;
     stamp: string;
     filter: number;
+    tilt: number;
     cacheBust: number;
 }
 
@@ -154,9 +155,15 @@ function mosaicLayerName(product: RadarProduct, stamp: string): string {
     return `ridge::USCOMP-${product.iemCode === 'N0B' ? 'N0Q' : product.iemCode}-${stamp}`;
 }
 
-function ridgeLayerName(siteId: string, product: RadarProduct, siteType: string, stamp: string): string {
+function ridgeLayerName(
+    siteId: string,
+    product: RadarProduct,
+    siteType: string,
+    stamp: string,
+    tilt: number,
+): string {
     const sector = toIemId(siteId);
-    const prod = siteCode(product, siteType);
+    const prod = siteCode(product, siteType, tilt);
     const when = !stamp || stamp === 'live' ? '0' : stamp;
     return `ridge::${sector}-${prod}-${when}`;
 }
@@ -165,7 +172,7 @@ export function iemLayerName(req: TileRequest): string {
     if (isMosaic(req.siteId) || req.siteId === CONUS_SITE_ID) {
         return mosaicLayerName(req.product, req.stamp);
     }
-    return ridgeLayerName(req.siteId, req.product, req.siteType, req.stamp);
+    return ridgeLayerName(req.siteId, req.product, req.siteType, req.stamp, req.tilt);
 }
 
 export function tileUrl(req: TileRequest, useProtocol: boolean): string {
@@ -224,11 +231,7 @@ function extractProductCodes(body: unknown): string[] {
         }
     };
     visit(body);
-    const known = new Set<string>();
-    for (const product of ALL_PRODUCTS) {
-        known.add(product.iemCode);
-        if (product.tdwrCode) known.add(product.tdwrCode);
-    }
+    const known = knownProductCodes();
     return [...found].filter((code) => known.has(code));
 }
 

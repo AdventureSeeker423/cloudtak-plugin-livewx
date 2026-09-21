@@ -41,12 +41,6 @@
         >
             {{ state.alertCount }} Active Nationwide (Not Limited To The Selected Radar).
         </p>
-        <p
-            v-if='state.selectedAlert'
-            class='small mb-3'
-        >
-            {{ state.selectedAlert }}
-        </p>
 
         <template v-if='state.overlayEnabled'>
             <label
@@ -150,32 +144,61 @@
                 WSR-88D In Blue, TDWR In Orange. Click A Site To Select It.
             </p>
 
-            <label
-                class='form-label mb-1'
-                for='livewx-product'
-            >
-                Data Type
-            </label>
-            <select
-                id='livewx-product'
-                class='form-select form-select-sm mb-1'
-                :value='state.productId'
-                @change='onProduct'
-            >
-                <optgroup
-                    v-for='group in productGroups'
-                    :key='group.group'
-                    :label='group.group'
-                >
-                    <option
-                        v-for='product in group.products'
-                        :key='product.id'
-                        :value='product.id'
+            <div class='d-flex gap-2 align-items-end mb-1'>
+                <div class='livewx-product'>
+                    <label
+                        class='form-label mb-1'
+                        for='livewx-product'
                     >
-                        {{ product.label }}
-                    </option>
-                </optgroup>
-            </select>
+                        Data Type
+                    </label>
+                    <select
+                        id='livewx-product'
+                        class='form-select form-select-sm'
+                        :value='state.productId'
+                        @change='onProduct'
+                    >
+                        <optgroup
+                            v-for='group in productGroups'
+                            :key='group.group'
+                            :label='group.group'
+                        >
+                            <option
+                                v-for='product in group.products'
+                                :key='product.id'
+                                :value='product.id'
+                            >
+                                {{ product.label }}
+                            </option>
+                        </optgroup>
+                    </select>
+                </div>
+                <div
+                    v-if='tiltOptions.length > 1'
+                    class='livewx-tilt'
+                >
+                    <label
+                        class='form-label mb-1'
+                        for='livewx-tilt'
+                    >
+                        Tilt
+                    </label>
+                    <select
+                        id='livewx-tilt'
+                        class='form-select form-select-sm'
+                        :value='state.tilt'
+                        @change='onTilt'
+                    >
+                        <option
+                            v-for='tilt in tiltOptions'
+                            :key='tilt.index'
+                            :value='tilt.index'
+                        >
+                            {{ tilt.label }}
+                        </option>
+                    </select>
+                </div>
+            </div>
             <p
                 v-if='isMosaic(state.siteId)'
                 class='text-secondary small mb-3'
@@ -189,84 +212,85 @@
                 Level 2 Names Use The Closest IEM Level 3 Image (REF→N0B, VEL→N0U).
             </p>
 
-            <label
-                class='form-label mb-1'
-                for='livewx-filter'
-            >
-                Filter {{ filterLabel }}
-            </label>
-            <input
-                id='livewx-filter'
-                class='form-range mb-3'
-                type='range'
-                min='0'
-                step='1'
-                :max='filterCeiling'
-                :value='state.filter'
-                :disabled='current?.filterKind === "other"'
-                @input='onFilter'
-                @wheel.prevent='onFilterWheel'
-            >
-
-            <h4 class='subheader'>
-                Replay
-            </h4>
-            <div class='d-flex gap-2 mb-2'>
-                <button
-                    class='btn btn-sm btn-outline-secondary'
-                    type='button'
-                    :disabled='!frames.length'
-                    @click='onPlay'
+            <template v-if='filterAvailable'>
+                <label
+                    class='form-label mb-1'
+                    for='livewx-filter'
                 >
-                    {{ state.playing ? 'Pause' : 'Play' }}
-                </button>
-                <button
-                    class='btn btn-sm btn-outline-secondary'
-                    type='button'
-                    @click='onLive'
-                >
-                    Live
-                </button>
-            </div>
-            <div class='replay-wrap mb-3'>
+                    Filter {{ filterLabel }}
+                </label>
                 <input
-                    class='form-range mb-0'
+                    id='livewx-filter'
+                    class='form-range mb-3'
                     type='range'
                     min='0'
                     step='1'
-                    :max='replaySliderMax'
-                    :value='replaySliderValue'
-                    :disabled='!frames.length'
-                    @input='onReplay'
-                    @wheel.prevent='onReplayWheel'
+                    :max='filterCeiling'
+                    :value='state.filter'
+                    @input='onFilter'
+                    @wheel.prevent='onFilterWheel'
                 >
-                <div class='replay-ticks'>
-                    <span
-                        v-for='tick in replayTicks'
-                        :key='tick.key'
-                        class='replay-tick'
-                        :class='{
-                            "replay-tick-start": tick.align === "start",
-                            "replay-tick-end": tick.align === "end",
-                        }'
-                        :style='{ left: tick.pct + "%" }'
+            </template>
+
+            <template v-if='frames.length'>
+                <h4 class='subheader'>
+                    Replay
+                </h4>
+                <div class='d-flex gap-2 mb-2'>
+                    <button
+                        class='btn btn-sm btn-outline-secondary'
+                        type='button'
+                        @click='onPlay'
                     >
-                        {{ tick.label }}
-                    </span>
+                        {{ state.playing ? 'Pause' : 'Play' }}
+                    </button>
+                    <button
+                        class='btn btn-sm btn-outline-secondary'
+                        type='button'
+                        @click='onLive'
+                    >
+                        Live
+                    </button>
                 </div>
-                <p
-                    v-if='isLive'
-                    class='small mb-0 mt-2'
-                >
-                    Live Image · {{ liveAgeText }}
-                </p>
-                <p
-                    v-else
-                    class='text-secondary small mb-0 mt-2'
-                >
-                    {{ replayCaption }}
-                </p>
-            </div>
+                <div class='replay-wrap mb-3'>
+                    <input
+                        class='form-range mb-0'
+                        type='range'
+                        min='0'
+                        step='1'
+                        :max='replaySliderMax'
+                        :value='replaySliderValue'
+                        @input='onReplay'
+                        @wheel.prevent='onReplayWheel'
+                    >
+                    <div class='replay-ticks'>
+                        <span
+                            v-for='tick in replayTicks'
+                            :key='tick.key'
+                            class='replay-tick'
+                            :class='{
+                                "replay-tick-start": tick.align === "start",
+                                "replay-tick-end": tick.align === "end",
+                            }'
+                            :style='{ left: tick.pct + "%" }'
+                        >
+                            {{ tick.label }}
+                        </span>
+                    </div>
+                    <p
+                        v-if='isLive'
+                        class='small mb-0 mt-2'
+                    >
+                        Live Image · {{ liveAgeText }}
+                    </p>
+                    <p
+                        v-else
+                        class='text-secondary small mb-0 mt-2'
+                    >
+                        {{ replayCaption }}
+                    </p>
+                </div>
+            </template>
         </template>
 
         <p
@@ -297,9 +321,9 @@ import {
     togglePlay,
     visibleProducts,
 } from './radar.ts';
-import { groupedOptions, filterMax, filterUnit } from './products.ts';
+import { groupedOptions, availableTilts, filterMax, filterUnit, tiltLabel } from './products.ts';
 import { findSite, isMosaic, searchSites, siteLabel } from './sites.ts';
-import { setAlertsEnabled, setFilter, setOpacity, setProduct, setSite, setSitesOnMap, state } from './state.ts';
+import { setAlertsEnabled, setFilter, setOpacity, setProduct, setSite, setSitesOnMap, setTilt, state } from './state.ts';
 import { ageLabel, shortAgeLabel } from './tiles.ts';
 
 defineProps<{
@@ -322,12 +346,25 @@ const productGroups = computed(() => {
 });
 const frames = computed(() => replayFramesRef.value);
 const current = computed(() => currentProduct());
+const filterAvailable = computed(() => {
+    const kind = current.value?.filterKind;
+    return kind === 'reflectivity' || kind === 'velocity';
+});
 const filterCeiling = computed(() => filterMax(current.value?.filterKind ?? 'reflectivity'));
 const filterLabel = computed(() => {
     const kind = current.value?.filterKind ?? 'reflectivity';
-    if (kind === 'other') return 'N/A';
     if (state.filter <= 0) return 'Off';
     return `≥ ${state.filter} ${filterUnit(kind)}`;
+});
+const tiltOptions = computed(() => {
+    void availableCodes.value;
+    const product = current.value;
+    if (!product || isMosaic(state.siteId)) return [];
+    const site = findSite(state.siteId);
+    return availableTilts(product, site?.type ?? 'wsr88d', availableCodes.value).map((index) => ({
+        index,
+        label: tiltLabel(index),
+    }));
 });
 
 const nowMs = ref(Date.now());
@@ -488,6 +525,11 @@ function onProduct(ev: Event): void {
     void applyRadarSettings();
 }
 
+function onTilt(ev: Event): void {
+    setTilt(Number((ev.target as HTMLSelectElement).value));
+    void applyRadarSettings();
+}
+
 function onFilter(ev: Event): void {
     setFilter(Number((ev.target as HTMLInputElement).value));
     applyFilter();
@@ -530,6 +572,14 @@ function onReplayWheel(ev: WheelEvent): void {
 .livewx-pane {
     font-size: 14px;
 }
+.livewx-product {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.livewx-tilt {
+    flex: 0 0 7.25rem;
+    width: 7.25rem;
+}
 .subheader {
     font-size: 12px;
     text-transform: uppercase;
@@ -550,7 +600,7 @@ function onReplayWheel(ev: WheelEvent): void {
     top: 0;
     font-size: 10px;
     line-height: 16px;
-    color: #adb5bd;
+    color: var(--tblr-secondary, var(--tblr-navbar-color, inherit));
     transform: translateX(-50%);
     white-space: nowrap;
 }
@@ -572,17 +622,18 @@ function onReplayWheel(ev: WheelEvent): void {
     overflow-y: auto;
     margin-top: 2px;
     padding: 4px 0;
-    background: #212529;
-    border: 1px solid #495057;
+    color: var(--tblr-navbar-color, var(--tblr-body-color, inherit));
+    background: var(--tblr-navbar-bg, var(--tblr-bg-surface, inherit));
+    border: 1px solid var(--tblr-navbar-border-color, var(--tblr-border-color, rgba(127, 127, 127, 0.35)));
     border-radius: 4px;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+    box-shadow: var(--tblr-box-shadow-lg, 0 8px 20px rgba(0, 0, 0, 0.35));
 }
 .site-option {
     display: block;
     width: 100%;
     border: 0;
     background: transparent;
-    color: #e9ecef;
+    color: inherit;
     text-align: left;
     font-size: 13px;
     line-height: 1.3;
@@ -590,12 +641,12 @@ function onReplayWheel(ev: WheelEvent): void {
 }
 .site-option:hover,
 .site-option.active {
-    background: #375a7f;
-    color: #ffffff;
+    background: var(--tblr-navbar-active-bg, var(--tblr-bg-surface-secondary, rgba(127, 127, 127, 0.2)));
+    color: var(--tblr-navbar-active-color, inherit);
 }
 .site-empty {
     padding: 8px 10px;
     font-size: 12px;
-    color: #adb5bd;
+    color: var(--tblr-secondary, inherit);
 }
 </style>

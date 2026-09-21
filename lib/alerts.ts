@@ -109,26 +109,32 @@ function ensurePopupStyle(): void {
     border-left-color: var(--tblr-bg-surface, var(--bs-tertiary-bg, var(--bs-body-bg, Canvas)));
 }
 .livewx-alert-card {
-    max-width: 280px;
+    max-width: 400px;
+    max-height: 60vh;
+    overflow: auto;
 }
 .livewx-alert-title {
     color: var(--tblr-body-color, var(--bs-body-color, inherit));
     font-size: 15px;
     font-weight: 700;
+    margin-bottom: 8px;
 }
 .livewx-alert-body {
     color: var(--tblr-body-color, var(--bs-body-color, inherit));
-    margin-top: 6px;
 }
-.livewx-alert-meta {
-    color: var(--tblr-secondary, var(--bs-secondary-color, inherit));
-    margin-top: 6px;
-    font-size: 12px;
+.livewx-alert-body p {
+    margin: 0 0 0.65em;
 }
-.livewx-alert-instruction {
-    color: var(--tblr-body-color, var(--bs-body-color, inherit));
-    margin-top: 8px;
-    white-space: pre-wrap;
+.livewx-alert-body p:last-child,
+.livewx-alert-list:last-child {
+    margin-bottom: 0;
+}
+.livewx-alert-list {
+    margin: 0 0 0.65em;
+    padding-left: 1.15em;
+}
+.livewx-alert-list li {
+    margin: 0 0 0.35em;
 }
 `;
     document.head.appendChild(el);
@@ -229,6 +235,51 @@ function escapeHtml(value: string): string {
         .replaceAll('"', '&quot;');
 }
 
+function textOf(value: unknown): string {
+    return typeof value === 'string' ? value.trim() : '';
+}
+
+function formatNwsText(text: string): string {
+    const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/&&/g, '\n');
+    const chunks: string[] = [];
+    let list: string[] = [];
+    const flushList = (): void => {
+        if (!list.length) return;
+        chunks.push(`<ul class="livewx-alert-list">${list.map((item) => `<li>${item}</li>`).join('')}</ul>`);
+        list = [];
+    };
+    for (const raw of normalized.split('\n')) {
+        const line = raw.trim();
+        if (!line) {
+            flushList();
+            continue;
+        }
+        if (line.startsWith('*')) {
+            list.push(escapeHtml(line.replace(/^\*+\s*/, '')));
+            continue;
+        }
+        flushList();
+        chunks.push(`<p>${escapeHtml(line)}</p>`);
+    }
+    flushList();
+    return chunks.join('');
+}
+
+function alertHtml(props: AlertProps): string {
+    const headline = textOf(props.headline);
+    const description = textOf(props.description);
+    const instruction = textOf(props.instruction);
+    const event = textOf(props.event);
+    const parts: string[] = [];
+    if (headline) parts.push(`<div class="livewx-alert-title">${escapeHtml(headline)}</div>`);
+    else if (event) parts.push(`<div class="livewx-alert-title">${escapeHtml(event)}</div>`);
+    if (description) parts.push(`<div class="livewx-alert-body">${formatNwsText(description)}</div>`);
+    if (instruction && instruction !== description) {
+        parts.push(`<div class="livewx-alert-body">${formatNwsText(instruction)}</div>`);
+    }
+    return `<div class="livewx-alert-card">${parts.join('')}</div>`;
+}
+
 async function showPopup(
     map: LiveWxMap,
     lngLat: { lng: number; lat: number },
@@ -236,17 +287,7 @@ async function showPopup(
 ): Promise<void> {
     ensurePopupStyle();
     popup?.remove();
-    const event = props.event ?? 'Alert';
-    const headline = props.headline ?? '';
-    const expires = props.expires ? `Expires ${props.expires}` : '';
-    const instruction = props.instruction ?? '';
-    const html = `<div class="livewx-alert-card">
-        <div class="livewx-alert-title">${escapeHtml(event)}</div>
-        ${headline ? `<div class="livewx-alert-body">${escapeHtml(headline)}</div>` : ''}
-        ${expires ? `<div class="livewx-alert-meta">${escapeHtml(expires)}</div>` : ''}
-        ${instruction ? `<div class="livewx-alert-instruction">${escapeHtml(instruction)}</div>` : ''}
-    </div>`;
-    state.selectedAlert = [event, headline, expires].filter(Boolean).join(' — ');
+    const html = alertHtml(props);
 
     try {
         const ml = await import('maplibre-gl') as {
@@ -263,14 +304,14 @@ async function showPopup(
         if (!Popup) return;
         popup = new Popup({
             closeButton: true,
-            maxWidth: '320px',
+            maxWidth: '420px',
             className: 'livewx-alert-popup',
         })
             .setLngLat(lngLat)
             .setHTML(html)
             .addTo(map);
     } catch {
-        /* pane still shows selectedAlert */
+        /* popup optional */
     }
 }
 
@@ -306,7 +347,6 @@ export function stopAlerts(): void {
     popup?.remove();
     popup = null;
     state.alertCount = 0;
-    state.selectedAlert = '';
     if (mapRef) {
         try { mapRef.off('click', ALERT_FILL_ID, onAlertClick); } catch { /* ignore */ }
         removeAlertLayers(mapRef);
