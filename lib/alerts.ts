@@ -416,6 +416,33 @@ function hitsAt(map: LiveWxMap, point: unknown, ids: string[]): Array<{ properti
     }
 }
 
+type StackedFeature = {
+    layer?: { id?: string; type?: string };
+    geometry?: { type?: string } | null;
+    properties?: AlertProps;
+};
+
+/** CloudTAK point CoTs: `{overlayId}`, `{overlayId}-icon|-course|-group|-text-point`. */
+const COT_POINT_LAYER = /^-?\d+(?:-icon|-course|-group|-text-point)?$/;
+
+function isCotPoint(feat: StackedFeature): boolean {
+    const layerId = feat.layer?.id ?? '';
+    if (!COT_POINT_LAYER.test(layerId)) return false;
+    if (/(?:-icon|-course|-group|-text-point)$/.test(layerId)) return true;
+    // A bare overlay id is also used for raster layers. Only a point marker counts.
+    return feat.geometry?.type === 'Point'
+        && (feat.layer?.type === 'circle' || feat.layer?.type === 'symbol');
+}
+
+function featuresAt(map: LiveWxMap, point: unknown): StackedFeature[] {
+    if (!map.queryRenderedFeatures) return [];
+    try {
+        return map.queryRenderedFeatures(point) as StackedFeature[];
+    } catch {
+        return [];
+    }
+}
+
 function onAlertClick(e: {
     lngLat?: { lng: number; lat: number };
     point?: unknown;
@@ -423,10 +450,17 @@ function onAlertClick(e: {
     const map = mapRef;
     if (!map || !e.lngLat || e.point == null) return;
     if (hitsAt(map, e.point, OVERLAY_HIT_LAYERS).length) return;
-    const hit = hitsAt(map, e.point, [ALERT_FILL_ID, ALERT_LINE_ID])[0];
-    const props = hit?.properties;
-    if (!props) return;
-    void showPopup(map, e.lngLat, props);
+
+    // Top-most feature first. A point CoT drawn above the polygon wins;
+    // the watch/warning is ignored and the CoT selection proceeds.
+    for (const feat of featuresAt(map, e.point)) {
+        if (isCotPoint(feat)) return;
+        if (feat.layer?.id !== ALERT_FILL_ID && feat.layer?.id !== ALERT_LINE_ID) continue;
+        const props = feat.properties;
+        if (!props) continue;
+        void showPopup(map, e.lngLat, props);
+        return;
+    }
 }
 
 export function startAlerts(api: PluginAPI): void {
