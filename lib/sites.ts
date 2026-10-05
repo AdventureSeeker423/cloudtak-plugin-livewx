@@ -65,7 +65,7 @@ export function kmBetween(lat1: number, lon1: number, lat2: number, lon2: number
     return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
-/** Null when CONUS/mosaic — lightning and tracks stay nationwide. */
+/** Null when CONUS/mosaic — lightning stays nationwide. */
 export function coverageForSiteId(id: string): {
     lat: number;
     lon: number;

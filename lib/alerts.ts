@@ -10,11 +10,6 @@ import {
     RADAR_LAYER_ID,
     SITES_CIRCLE_ID,
     SITES_LABEL_ID,
-    TRACKS_CELL_ID,
-    TRACKS_FCST_ID,
-    TRACKS_FCST_LINE_ID,
-    TRACKS_LABEL_ID,
-    TRACKS_LINE_ID,
 } from './constants.ts';
 import type { LiveWxMap } from './map-types.ts';
 import { state } from './state.ts';
@@ -391,11 +386,6 @@ async function showPopup(
 }
 
 const OVERLAY_HIT_LAYERS = [
-    TRACKS_CELL_ID,
-    TRACKS_LABEL_ID,
-    TRACKS_LINE_ID,
-    TRACKS_FCST_LINE_ID,
-    TRACKS_FCST_ID,
     LIGHTNING_LAYER_ID,
     LIGHTNING_LEGACY_CIRCLE_ID,
     SITES_CIRCLE_ID,
