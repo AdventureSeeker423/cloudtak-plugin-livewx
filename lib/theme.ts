@@ -1,4 +1,4 @@
-/** CloudTAK floating sidebar / panel surface (see CloudTAK api/web/src/style.scss). */
+/** CloudTAK floating sidebar / panel surface (see CloudTAK app/src/style.scss). */
 export const SURFACE_BG = 'var(--livewx-bg, var(--cloudtak-surface-bg, var(--cloudtak-panel-bg, var(--tblr-bg-surface, Canvas))))';
 export const SURFACE_FG = 'var(--livewx-fg, var(--cloudtak-surface-color, var(--tblr-body-color, inherit)))';
 export const SURFACE_BORDER = 'var(--livewx-border, var(--cloudtak-surface-border, var(--tblr-border-color, rgba(127, 127, 127, 0.35))))';

@@ -5,12 +5,13 @@
 # This plugin is a flat Vue/TS repo (index.ts at the root). CloudTAK's
 # WEB_PLUGINS env var can also deploy it, but this installer matches the
 # same operator flow as Quick Point Dropper: copy into
-# api/web/plugins/<name>/, then rebuild + restart the API image.
+# app/plugins/<name>/ (CloudTAK 13.102+), then rebuild + restart the API image.
 #
 # This script:
 #   • fetch the newest plugin source (git pull, or clone GitHub if this
 #     folder is a marketplace copy without its own .git)
-#   • copy plugin sources → <CloudTAK>/api/web/plugins/livewx-radar/
+#   • copy plugin sources → <CloudTAK>/app/plugins/livewx-radar/
+#   • remove a pre-13.102 copy under api/web/plugins/ if one is still there
 #   • rebuild + restart the CloudTAK API image so the plugin is baked in.
 #
 # Usage:
@@ -168,8 +169,14 @@ if [ "$DO_BUILD" -eq 1 ] && [ ! -f "$CT_DIR/docker-compose.yml" ]; then
     echo "  Re-run with --no-build to copy files only, then rebuild yourself." >&2
     exit 1
 fi
+if [ ! -d "$CT_DIR/app" ]; then
+    echo "ERROR: $CT_DIR/app not found." >&2
+    echo "  Plugins install into app/plugins/. That layout arrived in CloudTAK 13.102." >&2
+    exit 1
+fi
 
-WEB_DEST="$CT_DIR/api/web/plugins/$INSTALL_DIR_NAME"
+PLUGIN_DEST="$CT_DIR/app/plugins/$INSTALL_DIR_NAME"
+LEGACY_DEST="$CT_DIR/api/web/plugins/$INSTALL_DIR_NAME"
 
 echo "CloudTAK: $CT_DIR"
 echo "Plugin:   $REPO_DIR"
@@ -186,25 +193,33 @@ if [ "$DO_PULL" -eq 1 ]; then
 fi
 
 if [ "$ACTION" = "remove" ]; then
-    if [ -d "$WEB_DEST" ]; then
-        rm -rf "$WEB_DEST"
-        echo "Removed web plugin: api/web/plugins/$INSTALL_DIR_NAME"
+    if [ -d "$PLUGIN_DEST" ]; then
+        rm -rf "$PLUGIN_DEST"
+        echo "Removed plugin: app/plugins/$INSTALL_DIR_NAME"
+    fi
+    if [ -d "$LEGACY_DEST" ]; then
+        rm -rf "$LEGACY_DEST"
+        echo "Removed pre-13.102 plugin: api/web/plugins/$INSTALL_DIR_NAME"
     fi
 else
     if [ ! -f "$SOURCE_DIR/index.ts" ]; then
         echo "ERROR: $SOURCE_DIR/index.ts not found — run this from the plugin repo." >&2
         exit 1
     fi
-    mkdir -p "$CT_DIR/api/web/plugins"
+    mkdir -p "$CT_DIR/app/plugins"
 
-    rm -rf "$WEB_DEST"
-    mkdir -p "$WEB_DEST/lib" "$WEB_DEST/data"
+    rm -rf "$PLUGIN_DEST"
+    mkdir -p "$PLUGIN_DEST/lib" "$PLUGIN_DEST/data"
     cp "$SOURCE_DIR/index.ts" "$SOURCE_DIR/package.json" "$SOURCE_DIR/tsconfig.json" \
-        "$SOURCE_DIR/eslint.config.js" "$SOURCE_DIR/env.d.ts" "$WEB_DEST/"
-    cp -R "$SOURCE_DIR/lib/." "$WEB_DEST/lib/"
-    cp -R "$SOURCE_DIR/data/." "$WEB_DEST/data/"
-    echo "Installed web plugin: api/web/plugins/$INSTALL_DIR_NAME"
+        "$SOURCE_DIR/eslint.config.js" "$SOURCE_DIR/env.d.ts" "$PLUGIN_DEST/"
+    cp -R "$SOURCE_DIR/lib/." "$PLUGIN_DEST/lib/"
+    cp -R "$SOURCE_DIR/data/." "$PLUGIN_DEST/data/"
+    echo "Installed plugin: app/plugins/$INSTALL_DIR_NAME"
     echo "  source: $SOURCE_DIR"
+    if [ -d "$LEGACY_DEST" ]; then
+        rm -rf "$LEGACY_DEST"
+        echo "Removed pre-13.102 copy: api/web/plugins/$INSTALL_DIR_NAME"
+    fi
 fi
 
 echo

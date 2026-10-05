@@ -2,7 +2,7 @@
 
 CloudTAK plugin that overlays live NEXRAD imagery, nationwide NWS watches/warnings, and live lightning on the map.
 
-Requires CloudTAK **13.45** or newer.
+Requires CloudTAK **13.102** or newer.
 
 ## What it does
 
@@ -38,7 +38,7 @@ Or pass the CloudTAK path:
 ./install.sh /path/to/CloudTAK
 ```
 
-The script finds CloudTAK at `$CLOUDTAK`, `~/CloudTAK`, `/home/takwerx/CloudTAK`, or `/home/*/CloudTAK`. Before copying, it fetches the latest `main` from GitHub. If you run it from a marketplace copy (no plugin `.git`), it clones GitHub into a temp dir so the install is not stuck on stale files. Then it copies into `api/web/plugins/livewx-radar/` and rebuilds the API image. After it finishes: **Settings → Refresh App**. A normal browser refresh is not enough.
+The script finds CloudTAK at `$CLOUDTAK`, `~/CloudTAK`, `/home/takwerx/CloudTAK`, or `/home/*/CloudTAK`. Before copying, it fetches the latest `main` from GitHub. If you run it from a marketplace copy (no plugin `.git`), it clones GitHub into a temp dir so the install is not stuck on stale files. Then it copies into `app/plugins/livewx-radar/` and rebuilds the API image. After it finishes: **Settings → Refresh App**. A normal browser refresh is not enough.
 
 Because `index.ts` is at the repository root, you can also bake it in with CloudTAK’s `WEB_PLUGINS` build arg.
 
@@ -48,7 +48,7 @@ Because `index.ts` is at the repository root, you can also bake it in with Cloud
 
 ### Local development
 
-Symlink this checkout to `CloudTAK/api/web/plugins/livewx-radar`, run `npm install` here (with `@tak-ps/cloudtak` pointing at your CloudTAK web package), and restart `npm run serve` in `api/web`.
+Symlink this checkout to `CloudTAK/app/plugins/livewx-radar`, run `npm install` here (with `@tak-ps/cloudtak` pointing at your CloudTAK `app` package), and restart `npm run serve` in `app`.
 
 ## Attribution
 
