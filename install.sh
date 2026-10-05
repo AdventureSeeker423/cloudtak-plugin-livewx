@@ -178,6 +178,20 @@ fi
 PLUGIN_DEST="$CT_DIR/app/plugins/$INSTALL_DIR_NAME"
 LEGACY_DEST="$CT_DIR/api/web/plugins/$INSTALL_DIR_NAME"
 
+# CloudTAK 13.102 does not load api/web/plugins. A leftover copy there is often
+# owned by another user, so a failed delete must not fail the install.
+remove_legacy() {
+    if [ ! -e "$LEGACY_DEST" ]; then
+        return 0
+    fi
+    if rm -rf "$LEGACY_DEST" 2>/dev/null; then
+        echo "Removed pre-13.102 copy: api/web/plugins/$INSTALL_DIR_NAME"
+        return 0
+    fi
+    echo "WARNING: left pre-13.102 copy in place (not writable): api/web/plugins/$INSTALL_DIR_NAME" >&2
+    echo "  CloudTAK 13.102 loads app/plugins only. Remove that old directory manually if you want it gone." >&2
+}
+
 echo "CloudTAK: $CT_DIR"
 echo "Plugin:   $REPO_DIR"
 echo "Action:   $ACTION"
@@ -197,10 +211,7 @@ if [ "$ACTION" = "remove" ]; then
         rm -rf "$PLUGIN_DEST"
         echo "Removed plugin: app/plugins/$INSTALL_DIR_NAME"
     fi
-    if [ -d "$LEGACY_DEST" ]; then
-        rm -rf "$LEGACY_DEST"
-        echo "Removed pre-13.102 plugin: api/web/plugins/$INSTALL_DIR_NAME"
-    fi
+    remove_legacy
 else
     if [ ! -f "$SOURCE_DIR/index.ts" ]; then
         echo "ERROR: $SOURCE_DIR/index.ts not found — run this from the plugin repo." >&2
@@ -216,10 +227,7 @@ else
     cp -R "$SOURCE_DIR/data/." "$PLUGIN_DEST/data/"
     echo "Installed plugin: app/plugins/$INSTALL_DIR_NAME"
     echo "  source: $SOURCE_DIR"
-    if [ -d "$LEGACY_DEST" ]; then
-        rm -rf "$LEGACY_DEST"
-        echo "Removed pre-13.102 copy: api/web/plugins/$INSTALL_DIR_NAME"
-    fi
+    remove_legacy
 fi
 
 echo
