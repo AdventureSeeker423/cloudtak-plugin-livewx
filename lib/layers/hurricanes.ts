@@ -216,6 +216,7 @@ export function registerHurricaneLayer(): void {
                 titleKeys: ['name', 'bin', 'kind'],
             });
             await refresh();
+            if (!running) return;
             if (timer) clearInterval(timer);
             timer = setInterval(() => { void refresh(); }, 300_000);
         },

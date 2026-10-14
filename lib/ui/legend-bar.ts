@@ -80,7 +80,7 @@ const LEGENDS: Record<string, LegendStrip> = {
     },
     rain_forecast: {
         id: 'rain_forecast',
-        label: 'Rain Forecast',
+        label: 'Rain Forecast (1 Hour)',
         unit: (u) => (u === 'us' ? 'in' : 'mm'),
         colors: RAIN_COLORS,
         min: (u) => (u === 'us' ? '0.01' : '0.2'),
@@ -175,7 +175,7 @@ const LEGENDS: Record<string, LegendStrip> = {
     },
 };
 
-const STYLE_ID = 'livewx-legend-bar-style';
+const STYLE_ID = 'livewx-legend-bar-style-v2';
 
 let mapRef: LiveWxMap | null = null;
 let root: HTMLDivElement | null = null;
@@ -216,14 +216,14 @@ function ensureStyle(): void {
 .livewx-legend-bar {
     position: absolute;
     left: 50%;
-    bottom: 12px;
+    bottom: 8px;
     transform: translateX(-50%);
     z-index: 12;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 3px;
     align-items: stretch;
-    width: min(420px, calc(100% - 140px));
+    width: min(210px, calc(100% - 100px));
     pointer-events: none;
     user-select: none;
 }
@@ -231,19 +231,19 @@ function ensureStyle(): void {
     display: none !important;
 }
 .livewx-legend-strip {
-    padding: 6px 10px 7px;
-    border-radius: 6px;
+    padding: 3px 6px 4px;
+    border-radius: 4px;
     color: ${SURFACE_FG};
     background: ${SURFACE_BG};
     border: 1px solid ${SURFACE_BORDER};
-    box-shadow: var(--tblr-box-shadow, 0 1px 4px rgba(0, 0, 0, 0.25));
-    font: 11px/1.25 var(--tblr-font-sans-serif, system-ui, Segoe UI, sans-serif);
+    box-shadow: var(--tblr-box-shadow, 0 1px 3px rgba(0, 0, 0, 0.25));
+    font: 9px/1.2 var(--tblr-font-sans-serif, system-ui, Segoe UI, sans-serif);
 }
 .livewx-legend-head {
     display: flex;
     justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 4px;
+    gap: 4px;
+    margin-bottom: 2px;
     font-weight: 600;
     letter-spacing: 0.01em;
 }
@@ -252,16 +252,16 @@ function ensureStyle(): void {
     opacity: 0.75;
 }
 .livewx-legend-ramp {
-    height: 10px;
-    border-radius: 2px;
+    height: 5px;
+    border-radius: 1px;
     border: 1px solid rgba(0, 0, 0, 0.2);
 }
 .livewx-legend-ticks {
     display: flex;
     justify-content: space-between;
-    margin-top: 3px;
+    margin-top: 1px;
     opacity: 0.8;
-    font-size: 10px;
+    font-size: 8px;
 }
 `;
     document.head.appendChild(style);

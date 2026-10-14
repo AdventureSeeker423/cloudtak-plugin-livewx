@@ -4,14 +4,12 @@
  */
 import type { LiveWxMap } from '../core/map-types.ts';
 import { mapOf } from '../core/map-host.ts';
-import { getLayerOpacity, registerLayer } from '../layers/registry.ts';
+import { getLayerOpacity, refreshStatus, registerLayer } from '../layers/registry.ts';
 import { boundsKey, fetchWindGrid, sampleGrid, type WindGrid } from './grid.ts';
 
 const PARTICLES = 900;
-const TRAIL = 36;
-const DRAW_STEP = 3;
-const FADES = 8;
-const MAX_AGE = 200;
+const TRAIL = 28;
+const MAX_AGE = 220;
 const PX_PER_FRAME_AT_6MS = 1.7;
 const TICK_MS = 50;
 const MOVE_SETTLE_MS = 1_200;
@@ -58,13 +56,28 @@ function bandIndex(ms: number): number {
     return BAND_MAX_MS.length;
 }
 
+function canvasHost(map: LiveWxMap): HTMLElement | null {
+    const fromApi = map.getCanvasContainer?.() || map.getCanvas?.()?.parentElement || map.getContainer?.();
+    if (fromApi) return fromApi;
+    return document.querySelector('.maplibregl-canvas-container') as HTMLElement | null;
+}
+
 function ensureCanvas(map: LiveWxMap): void {
-    if (canvas?.parentElement) return;
-    const host = map.getCanvasContainer?.() || map.getContainer?.();
-    if (!host) return;
+    if (canvas?.isConnected) {
+        syncSize(map);
+        return;
+    }
+    const host = canvasHost(map);
+    if (!host) {
+        statusText = 'Map canvas not ready';
+        return;
+    }
+    if (getComputedStyle(host).position === 'static') {
+        host.style.position = 'relative';
+    }
     canvas = document.createElement('canvas');
     canvas.className = 'livewx-wind-canvas';
-    canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2;';
+    canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:5;';
     host.appendChild(canvas);
     ctx = canvas.getContext('2d');
     syncSize(map);
@@ -72,17 +85,44 @@ function ensureCanvas(map: LiveWxMap): void {
 
 function syncSize(map: LiveWxMap): void {
     if (!canvas) return;
-    const host = map.getCanvasContainer?.() || map.getContainer?.() || canvas.parentElement;
+    const host = canvas.parentElement || canvasHost(map);
     if (!host) return;
-    const w = host.clientWidth || 1;
-    const h = host.clientHeight || 1;
+    const w = host.clientWidth || map.getCanvas?.()?.clientWidth || 1;
+    const h = host.clientHeight || map.getCanvas?.()?.clientHeight || 1;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
-        canvas.width = Math.round(w * dpr);
-        canvas.height = Math.round(h * dpr);
+    const tw = Math.max(1, Math.round(w * dpr));
+    const th = Math.max(1, Math.round(h * dpr));
+    if (canvas.width !== tw || canvas.height !== th) {
+        canvas.width = tw;
+        canvas.height = th;
         canvas.style.width = `${w}px`;
         canvas.style.height = `${h}px`;
     }
+}
+
+/** Project lon/lat → CSS pixels; falls back if map.project is missing. */
+function projectPoint(map: LiveWxMap, lng: number, latDeg: number): { x: number; y: number } | null {
+    if (map.project) {
+        try {
+            const p = map.project({ lng, lat: latDeg });
+            if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) return p;
+        } catch { /* fall through */ }
+        try {
+            const p = map.project([lng, latDeg]);
+            if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) return p;
+        } catch { /* fall through */ }
+    }
+    const center = map.getCenter?.();
+    const zoom = map.getZoom?.();
+    const host = canvas?.parentElement || canvasHost(map);
+    if (!center || zoom == null || !host) return null;
+    const w = host.clientWidth || 1;
+    const h = host.clientHeight || 1;
+    const scale = (512 * (2 ** zoom)) / 360;
+    const x = (lng - center.lng) * scale * Math.cos((center.lat * Math.PI) / 180) + w / 2;
+    const y = (center.lat - latDeg) * scale + h / 2;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return { x, y };
 }
 
 function respawn(i: number): void {
@@ -93,10 +133,18 @@ function respawn(i: number): void {
     let s = g?.south ?? -85;
     let n = g?.north ?? 85;
     if (b) {
-        w = Math.max(w, b.getWest());
-        e = Math.min(e, b.getEast());
-        s = Math.max(s, b.getSouth());
-        n = Math.min(n, b.getNorth());
+        try {
+            const bw = typeof b.getWest === 'function' ? b.getWest() : undefined;
+            const be = typeof b.getEast === 'function' ? b.getEast() : undefined;
+            const bs = typeof b.getSouth === 'function' ? b.getSouth() : undefined;
+            const bn = typeof b.getNorth === 'function' ? b.getNorth() : undefined;
+            if ([bw, be, bs, bn].every((v) => typeof v === 'number')) {
+                w = Math.max(w, bw as number);
+                e = Math.min(e, be as number);
+                s = Math.max(s, bs as number);
+                n = Math.min(n, bn as number);
+            }
+        } catch { /* keep grid extents */ }
     }
     if (!(e > w) || !(n > s)) {
         w = g?.west ?? -180;
@@ -107,7 +155,9 @@ function respawn(i: number): void {
     lon[i] = w + Math.random() * (e - w);
     lat[i] = s + Math.random() * (n - s);
     head[i] = 0;
-    len[i] = 0;
+    tLon[i * TRAIL] = lon[i];
+    tLat[i * TRAIL] = lat[i];
+    len[i] = 1;
     age[i] = Math.floor(Math.random() * (MAX_AGE / 2));
     speed[i] = 0;
 }
@@ -116,7 +166,6 @@ function metersPerPixel(map: LiveWxMap): number {
     const c = map.getCenter?.();
     const z = map.getZoom?.() ?? 5;
     if (!c) return 100;
-    // WebMercator meters/pixel at lat, zoom
     const latRad = (c.lat * Math.PI) / 180;
     return (156543.03392 * Math.cos(latRad)) / (2 ** z);
 }
@@ -133,34 +182,43 @@ function step(map: LiveWxMap): void {
             continue;
         }
         const s = sampleGrid(g, lon[i], lat[i]);
-        if (!s || s.speed < 0.05) {
+        if (!s) {
             respawn(i);
             continue;
         }
+        // Keep calm particles drifting slowly so trails still build.
+        const spd = Math.max(s.speed, 0.15);
+        const scale = spd / Math.max(s.speed, 1e-6);
+        const u = s.u * scale;
+        const v = s.v * scale;
         speed[i] = s.speed;
-        const metersPerDegLon = metersPerDegLat * Math.cos((lat[i] * Math.PI) / 180);
-        lon[i] += (s.u * seconds) / Math.max(1e-6, metersPerDegLon);
-        lat[i] += (s.v * seconds) / metersPerDegLat;
+        const metersPerDegLon = metersPerDegLat * Math.max(0.2, Math.cos((lat[i] * Math.PI) / 180));
+        lon[i] += (u * seconds) / metersPerDegLon;
+        lat[i] += (v * seconds) / metersPerDegLat;
+        if (lon[i] < g.west || lon[i] > g.east || lat[i] < g.south || lat[i] > g.north) {
+            respawn(i);
+            continue;
+        }
         const h = (head[i] + 1) % TRAIL;
         head[i] = h;
         tLon[i * TRAIL + h] = lon[i];
         tLat[i * TRAIL + h] = lat[i];
         if (len[i] < TRAIL) len[i]++;
-        if (lon[i] < g.west || lon[i] > g.east || lat[i] < g.south || lat[i] > g.north) {
-            respawn(i);
-        }
     }
 }
 
 function draw(map: LiveWxMap): void {
-    if (!ctx || !canvas || !map.project) return;
+    if (!ctx || !canvas) return;
     syncSize(map);
-    const dpr = canvas.width / (canvas.clientWidth || 1);
+    const cssW = canvas.clientWidth || 1;
+    const cssH = canvas.clientHeight || 1;
+    const dpr = canvas.width / cssW;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
-    ctx.globalAlpha = opacity;
-    ctx.lineCap = 'butt';
-    ctx.lineWidth = 1.9;
+    ctx.clearRect(0, 0, cssW, cssH);
+    if (!grid) return;
+    ctx.globalAlpha = Math.max(0.15, opacity);
+    ctx.lineCap = 'round';
+    ctx.lineWidth = 1.8;
 
     for (let i = 0; i < PARTICLES; i++) {
         const n = len[i];
@@ -168,35 +226,34 @@ function draw(map: LiveWxMap): void {
         const band = bandIndex(speed[i]);
         const rgb = BAND_COLORS[band] || BAND_COLORS[0];
         const h = head[i];
-        let prev: { x: number; y: number } | null = null;
-        let seg = 0;
-        for (let k = n - 1; k >= 0; k -= DRAW_STEP) {
+        ctx.beginPath();
+        let started = false;
+        let prevX = 0;
+        let prevY = 0;
+        for (let k = n - 1; k >= 0; k--) {
             const idx = ((h - k) % TRAIL + TRAIL) % TRAIL;
-            const p = map.project([tLon[i * TRAIL + idx], tLat[i * TRAIL + idx]]);
-            if (!prev) {
-                prev = p;
+            const p = projectPoint(map, tLon[i * TRAIL + idx], tLat[i * TRAIL + idx]);
+            if (!p) {
+                started = false;
                 continue;
             }
-            const fade = Math.min(FADES - 1, Math.floor(((n - 1 - k) / Math.max(1, n - 1)) * FADES));
-            const alpha = Math.round(235 * (((fade + 1) / FADES) ** 1.6));
-            if (fade >= FADES / 2) {
-                ctx.strokeStyle = `rgba(0,0,0,${(alpha / 255) * 0.55})`;
-                ctx.lineWidth = 3.2;
-                ctx.beginPath();
-                ctx.moveTo(prev.x, prev.y);
-                ctx.lineTo(p.x, p.y);
-                ctx.stroke();
+            // Drop segments that jump across the screen (antimeridian / wrap).
+            if (started && (Math.abs(p.x - prevX) > cssW * 0.35 || Math.abs(p.y - prevY) > cssH * 0.35)) {
+                started = false;
             }
-            ctx.strokeStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha / 255})`;
-            ctx.lineWidth = 1.9;
-            ctx.beginPath();
-            ctx.moveTo(prev.x, prev.y);
-            ctx.lineTo(p.x, p.y);
-            ctx.stroke();
-            prev = p;
-            seg++;
-            if (seg > 20) break;
+            if (!started) {
+                ctx.moveTo(p.x, p.y);
+                started = true;
+            } else {
+                ctx.lineTo(p.x, p.y);
+            }
+            prevX = p.x;
+            prevY = p.y;
         }
+        if (!started) continue;
+        const alpha = 0.55 + 0.45 * Math.min(1, speed[i] / 8);
+        ctx.strokeStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha})`;
+        ctx.stroke();
     }
     ctx.globalAlpha = 1;
 }
@@ -204,11 +261,20 @@ function draw(map: LiveWxMap): void {
 function tick(): void {
     if (!running) return;
     const map = mapOf();
-    if (map && grid) {
-        step(map);
-        draw(map);
+    if (map) {
+        ensureCanvas(map);
+        if (grid) {
+            step(map);
+            draw(map);
+        }
     }
     tickTimer = setTimeout(tick, TICK_MS);
+}
+
+function onRender(): void {
+    if (!running || !grid) return;
+    const map = mapOf();
+    if (map) draw(map);
 }
 
 async function loadGrid(force = false): Promise<void> {
@@ -217,38 +283,54 @@ async function loadGrid(force = false): Promise<void> {
         statusText = 'Rate limited — retrying soon';
         return;
     }
-    const b = mapOf()?.getBounds?.();
+    const map = mapOf();
+    const b = map?.getBounds?.();
     if (b && !force) {
-        const key = boundsKey({
-            west: b.getWest(),
-            east: b.getEast(),
-            south: b.getSouth(),
-            north: b.getNorth(),
-        });
-        // Skip tiny pans/zooms — keeps Open-Meteo under its free-tier budget.
-        if (key === lastBoundsKey && grid) return;
-        lastBoundsKey = key;
+        try {
+            const west = b.getWest?.();
+            const east = b.getEast?.();
+            const south = b.getSouth?.();
+            const north = b.getNorth?.();
+            if ([west, east, south, north].every((n) => typeof n === 'number')) {
+                const key = boundsKey({
+                    west: west as number,
+                    east: east as number,
+                    south: south as number,
+                    north: north as number,
+                });
+                if (key === lastBoundsKey && grid) return;
+                lastBoundsKey = key;
+            }
+        } catch { /* fetch anyway */ }
     }
     abort?.abort();
     abort = new AbortController();
     statusText = 'Loading…';
     try {
         const next = await fetchWindGrid(abort.signal);
-        if (!running || !next) return;
+        if (!running) return;
+        if (!next) {
+            statusText = 'Waiting for map view…';
+            return;
+        }
         grid = next;
         for (let i = 0; i < PARTICLES; i++) respawn(i);
         statusText = `10 m · ${next.model}`;
-        const map = mapOf();
-        if (map) draw(map);
+        if (map) {
+            ensureCanvas(map);
+            draw(map);
+        }
+        refreshStatus('surface_wind');
     } catch (e) {
         if ((e as { name?: string })?.name === 'AbortError') return;
         const msg = e instanceof Error ? e.message : 'Wind failed';
         if (/429|Too Many Requests/i.test(msg)) {
             backoffUntil = Date.now() + 60_000;
             statusText = 'Rate limited — wait ~1 min';
-            return;
+        } else {
+            statusText = msg;
         }
-        statusText = msg;
+        refreshStatus('surface_wind');
     }
 }
 
@@ -270,6 +352,7 @@ function attachMap(map: LiveWxMap): void {
     if (attached) return;
     map.on('moveend', onMoveEnd);
     map.on('resize', onResize);
+    map.on('render', onRender);
     attached = true;
 }
 
@@ -277,9 +360,10 @@ function detachMap(map: LiveWxMap | null): void {
     if (map && attached) {
         try { map.off('moveend', onMoveEnd); } catch { /* ignore */ }
         try { map.off('resize', onResize); } catch { /* ignore */ }
+        try { map.off('render', onRender); } catch { /* ignore */ }
     }
     attached = false;
-    if (canvas?.parentElement) canvas.parentElement.removeChild(canvas);
+    canvas?.remove();
     canvas = null;
     ctx = null;
 }
@@ -301,7 +385,8 @@ export function registerWindLayer(): void {
             opacity = getLayerOpacity('surface_wind');
             const map = mapOf();
             if (map) attachMap(map);
-            await loadGrid();
+            await loadGrid(true);
+            if (!running) return;
             if (tickTimer) clearTimeout(tickTimer);
             tickTimer = setTimeout(tick, TICK_MS);
             if (refreshTimer) clearInterval(refreshTimer);
@@ -335,6 +420,8 @@ export function registerWindLayer(): void {
             if (!running) return;
             attachMap(map);
             if (!tickTimer) tickTimer = setTimeout(tick, TICK_MS);
+            if (grid) draw(map);
+            else void loadGrid(true);
         },
         status: () => (running ? statusText : 'Off'),
     });

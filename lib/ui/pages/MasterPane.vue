@@ -30,7 +30,6 @@
                             class='form-check-input'
                             type='checkbox'
                             :checked='enabled.radar_overlay'
-                            :disabled='Boolean(layerUi.busy.radar_overlay)'
                             @change='toggle("radar_overlay", $event)'
                         >
                         <label
@@ -77,7 +76,6 @@
                         class='form-check-input'
                         type='checkbox'
                         :checked='enabled[row.id]'
-                        :disabled='Boolean(layerUi.busy[row.id])'
                         @change='toggle(row.id, $event)'
                     >
                     <label
@@ -122,7 +120,6 @@
                         class='form-check-input'
                         type='checkbox'
                         :checked='enabled[row.id]'
-                        :disabled='Boolean(layerUi.busy[row.id])'
                         @change='toggle(row.id, $event)'
                     >
                     <label
@@ -130,6 +127,12 @@
                         :for='`m-${row.id}`'
                     >{{ row.label }}</label>
                 </div>
+                <p
+                    v-if='enabled[row.id] && layerUi.status[row.id]'
+                    class='sec-meta mb-1'
+                >
+                    {{ layerUi.status[row.id] }}
+                </p>
                 <div
                     v-if='enabled[row.id]'
                     class='opacity-row'
@@ -162,7 +165,6 @@
                     class='form-check-input'
                     type='checkbox'
                     :checked='enabled.nws_wwa'
-                    :disabled='Boolean(layerUi.busy.nws_wwa)'
                     @change='toggle("nws_wwa", $event)'
                 >
                 <label
@@ -188,7 +190,6 @@
                     class='form-check-input'
                     type='checkbox'
                     :checked='enabled.blitzortung'
-                    :disabled='Boolean(layerUi.busy.blitzortung)'
                     @change='toggle("blitzortung", $event)'
                 >
                 <label
@@ -219,7 +220,6 @@
                         class='form-check-input'
                         type='checkbox'
                         :checked='enabled.lightning_density'
-                        :disabled='Boolean(layerUi.busy.lightning_density)'
                         @change='toggle("lightning_density", $event)'
                     >
                     <label
@@ -264,7 +264,6 @@
                         class='form-check-input'
                         type='checkbox'
                         :checked='enabled[row.id]'
-                        :disabled='Boolean(layerUi.busy[row.id])'
                         @change='toggle(row.id, $event)'
                     >
                     <label
@@ -314,7 +313,7 @@ const RAIN_LAYER_IDS = ['rain_forecast', 'rain_12h', 'rain_totals'] as const;
 
 const radarRows = [
     { id: 'satellite', label: 'Infrared Cloud Tops' },
-    { id: 'rain_forecast', label: 'Rain Forecast' },
+    { id: 'rain_forecast', label: 'Rain Forecast (1 Hour)' },
     { id: 'rain_12h', label: 'Rain (12 Hours)' },
     { id: 'rain_totals', label: 'Rain (24 Hours)' },
     { id: 'wind_field', label: 'Water Vapor' },
@@ -329,7 +328,7 @@ const moreRows = [
     { id: 'fw_zones', label: 'Fire Zones', opacity: false },
     { id: 'smoke', label: 'Smoke', opacity: true },
     { id: 'air_quality', label: 'Air Quality', opacity: false },
-    { id: 'metars', label: 'METARs', opacity: false },
+    { id: 'metars', label: 'METAR', opacity: false },
     { id: 'flash_flood', label: 'Flash Flood', opacity: false },
     { id: 'river_gauges', label: 'River Gauges', opacity: false },
     { id: 'buoys', label: 'Buoys', opacity: false },

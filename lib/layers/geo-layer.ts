@@ -220,6 +220,7 @@ export function createGeoLayer(opts: GeoLayerOpts): LayerDef {
             registerFeatureLayers(paintIds(), layerMeta());
             bindMoveRefresh();
             await refresh();
+            if (!running) return;
             if (timer) clearInterval(timer);
             timer = setInterval(() => { void refresh(); }, opts.pollMs ?? 300_000);
         },

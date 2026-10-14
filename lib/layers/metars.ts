@@ -1,5 +1,5 @@
 /**
- * METARs from the AWC minute cache (not the bbox API).
+ * METAR from the AWC minute cache (not the bbox API).
  * Respects AWC guidance: prefer cache files, ≤100 req/min, avoid per-pan queries.
  * https://aviationweather.gov/data/api/
  */
@@ -23,7 +23,7 @@ import {
 const CACHE_URL = 'https://aviationweather.gov/data/cache/metars.cache.csv.gz';
 /** Cache file updates once a minute — never hit AWC more often than that. */
 const MIN_FETCH_GAP_MS = 60_000;
-/** METARs usually update hourly; refresh a few times per hour is plenty. */
+/** METAR usually updates hourly; refresh a few times per hour is plenty. */
 const POLL_MS = 5 * 60_000;
 const BACKOFF_BASE_MS = 120_000;
 const BACKOFF_MAX_MS = 15 * 60_000;
@@ -178,7 +178,7 @@ export function metarDetailHtml(props: Record<string, unknown>): string {
 
     const title = site ? `${id} — ${site}` : id;
     return `<div class="livewx-alert-card">
-<div class="livewx-alert-eyebrow">METARs</div>
+<div class="livewx-alert-eyebrow">METAR</div>
 <div class="livewx-alert-title">${escapeHtml(title)}</div>
 <dl class="livewx-alert-dl">${dl}</dl>
 ${raw ? `<div class="livewx-metar-raw">
@@ -445,18 +445,19 @@ export function registerMetarLayer(): void {
     registerLayer({
         id: 'metars',
         group: 'more',
-        label: 'METARs',
-        description: 'Airport METARs (AWC cache)',
+        label: 'METAR',
+        description: 'Airport METAR (AWC cache)',
         hosts: ['aviationweather.gov'],
         sends: 'Minute cache',
         start: async () => {
             running = true;
             registerFeatureLayers([CIRCLE_ID], {
-                label: 'METARs',
+                label: 'METAR',
                 detailHtml: metarDetailHtml,
             });
             bindMove();
             await fetchCache(true);
+            if (!running) return;
             if (pollTimer) clearInterval(pollTimer);
             pollTimer = setInterval(() => { void fetchCache(false); }, POLL_MS);
         },
@@ -482,7 +483,7 @@ export function registerMetarLayer(): void {
         restore: (map) => {
             if (!running) return;
             registerFeatureLayers([CIRCLE_ID], {
-                label: 'METARs',
+                label: 'METAR',
                 detailHtml: metarDetailHtml,
             });
             bindMove();

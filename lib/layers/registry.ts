@@ -45,6 +45,9 @@ export const GROUP_LABELS: Record<LayerGroupId, string> = {
 
 const defs = new Map<string, LayerDef>();
 
+/** Bumps when enable/disable is requested so in-flight starts can be cancelled. */
+const opGen = new Map<string, number>();
+
 export const layerUi = reactive({
     /** layerId → last status string */
     status: {} as Record<string, string>,
@@ -154,7 +157,10 @@ export async function setLayerEnabled(id: string, enabled: boolean): Promise<voi
         layerUi.status[id] = 'Unknown layer';
         return;
     }
-    layerUi.busy[id] = true;
+    const gen = (opGen.get(id) ?? 0) + 1;
+    opGen.set(id, gen);
+    const stillCurrent = () => opGen.get(id) === gen;
+
     // Enabling implies consent for the hosts listed on the row.
     const enablePatch: { enabled: boolean; consent?: boolean; opacity?: number } = enabled
         ? { enabled: true, consent: true }
@@ -163,26 +169,40 @@ export async function setLayerEnabled(id: string, enabled: boolean): Promise<voi
         enablePatch.opacity = def.defaultOpacity;
     }
     writeLayerState(id, enablePatch);
-    refreshStatus(id);
+    layerUi.busy[id] = true;
+    layerUi.status[id] = enabled ? 'Starting…' : 'Stopping…';
+
     try {
-        if (enabled) {
-            layerUi.status[id] = 'Starting…';
-            await refreshAuthToken();
-            await def.start();
-            const map = mapOf();
-            if (map) def.restore(map);
-        } else {
+        if (!enabled) {
+            // Cancel any in-flight start: stop tears down / aborts fetches.
             await def.stop();
+            return;
         }
+        await refreshAuthToken();
+        if (!stillCurrent() || !isEnabled(id)) {
+            await def.stop();
+            return;
+        }
+        await def.start();
+        // Toggled off (or re-toggled) while start() was loading.
+        if (!stillCurrent() || !isEnabled(id)) {
+            await def.stop();
+            return;
+        }
+        const map = mapOf();
+        if (map) def.restore(map);
     } catch (e) {
-        if (enabled) {
+        if (!stillCurrent()) return;
+        if (enabled && isEnabled(id)) {
             try { await def.stop(); } catch { /* ignore */ }
             writeLayerState(id, { enabled: false });
         }
         layerUi.status[id] = e instanceof Error ? e.message : 'Layer failed';
     } finally {
-        layerUi.busy[id] = false;
-        refreshStatus(id);
+        if (stillCurrent()) {
+            layerUi.busy[id] = false;
+            refreshStatus(id);
+        }
     }
 }
 

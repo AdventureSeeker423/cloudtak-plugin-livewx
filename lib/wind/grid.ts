@@ -43,14 +43,17 @@ export function uvFromSpeedDir(speedMs: number, fromDeg: number): { u: number; v
 
 export function sampleGrid(g: WindGrid, lon: number, lat: number): WindSample | null {
     if (lon < g.west || lon > g.east || lat < g.south || lat > g.north) return null;
-    const x = ((lon - g.west) / (g.east - g.west)) * (g.nx - 1);
-    const y = ((lat - g.south) / (g.north - g.south)) * (g.ny - 1);
-    const x0 = Math.floor(x);
-    const y0 = Math.floor(y);
+    const dx = g.east - g.west;
+    const dy = g.north - g.south;
+    if (!(dx > 0) || !(dy > 0) || g.nx < 1 || g.ny < 1) return null;
+    const x = ((lon - g.west) / dx) * Math.max(1, g.nx - 1);
+    const y = ((lat - g.south) / dy) * Math.max(1, g.ny - 1);
+    const x0 = Math.max(0, Math.min(g.nx - 1, Math.floor(x)));
+    const y0 = Math.max(0, Math.min(g.ny - 1, Math.floor(y)));
     const x1 = Math.min(g.nx - 1, x0 + 1);
     const y1 = Math.min(g.ny - 1, y0 + 1);
-    const tx = x - x0;
-    const ty = y - y0;
+    const tx = g.nx === 1 ? 0 : x - x0;
+    const ty = g.ny === 1 ? 0 : y - y0;
     const i00 = y0 * g.nx + x0;
     const i10 = y0 * g.nx + x1;
     const i01 = y1 * g.nx + x0;
@@ -62,17 +65,90 @@ export function sampleGrid(g: WindGrid, lon: number, lat: number): WindSample | 
 }
 
 function bil(a: number, b: number, c: number, d: number, tx: number, ty: number): number {
-    return a * (1 - tx) * (1 - ty) + b * tx * (1 - ty) + c * (1 - tx) * ty + d * tx * ty;
+    // Skip NaN corners so a sparse/partial fill still interpolates.
+    const w00 = Number.isFinite(a) ? (1 - tx) * (1 - ty) : 0;
+    const w10 = Number.isFinite(b) ? tx * (1 - ty) : 0;
+    const w01 = Number.isFinite(c) ? (1 - tx) * ty : 0;
+    const w11 = Number.isFinite(d) ? tx * ty : 0;
+    const w = w00 + w10 + w01 + w11;
+    if (!(w > 0)) return Number.NaN;
+    return ((Number.isFinite(a) ? a * w00 : 0)
+        + (Number.isFinite(b) ? b * w10 : 0)
+        + (Number.isFinite(c) ? c * w01 : 0)
+        + (Number.isFinite(d) ? d * w11 : 0)) / w;
+}
+
+/** Fill leftover NaNs from the nearest valid sample (keeps streaks alive). */
+function fillNaNs(u: Float32Array, v: Float32Array, nx: number, ny: number): number {
+    let filled = 0;
+    for (let i = 0; i < u.length; i++) {
+        if (Number.isFinite(u[i]) && Number.isFinite(v[i])) {
+            filled++;
+            continue;
+        }
+        const x0 = i % nx;
+        const y0 = Math.floor(i / nx);
+        let best = -1;
+        let bestD = Number.POSITIVE_INFINITY;
+        for (let j = 0; j < u.length; j++) {
+            if (!Number.isFinite(u[j]) || !Number.isFinite(v[j])) continue;
+            const x1 = j % nx;
+            const y1 = Math.floor(j / nx);
+            const d = (x1 - x0) ** 2 + (y1 - y0) ** 2;
+            if (d < bestD) {
+                bestD = d;
+                best = j;
+            }
+        }
+        if (best >= 0) {
+            u[i] = u[best];
+            v[i] = v[best];
+            filled++;
+        }
+    }
+    return filled;
+}
+
+function readBounds(b: {
+    getWest?: () => number;
+    getEast?: () => number;
+    getSouth?: () => number;
+    getNorth?: () => number;
+    _sw?: { lng: number; lat: number };
+    _ne?: { lng: number; lat: number };
+}): { west: number; east: number; south: number; north: number } | null {
+    let west: number | undefined;
+    let east: number | undefined;
+    let south: number | undefined;
+    let north: number | undefined;
+    try {
+        west = typeof b.getWest === 'function' ? b.getWest() : b._sw?.lng;
+        east = typeof b.getEast === 'function' ? b.getEast() : b._ne?.lng;
+        south = typeof b.getSouth === 'function' ? b.getSouth() : b._sw?.lat;
+        north = typeof b.getNorth === 'function' ? b.getNorth() : b._ne?.lat;
+    } catch {
+        return null;
+    }
+    if ([west, east, south, north].some((n) => typeof n !== 'number' || !Number.isFinite(n))) {
+        return null;
+    }
+    if (!((east as number) > (west as number)) || !((north as number) > (south as number))) {
+        return null;
+    }
+    return {
+        west: west as number,
+        east: east as number,
+        south: south as number,
+        north: north as number,
+    };
 }
 
 function viewBounds(): { west: number; east: number; south: number; north: number } | null {
     const b = mapOf()?.getBounds?.();
     if (!b) return null;
-    let west = b.getWest();
-    let east = b.getEast();
-    let south = b.getSouth();
-    let north = b.getNorth();
-    if (!(east > west) || !(north > south)) return null;
+    const raw = readBounds(b);
+    if (!raw) return null;
+    let { west, east, south, north } = raw;
     // Modest pad — large pads explode the sample mesh on CONUS views.
     const padLon = Math.min(4, (east - west) * 0.12);
     const padLat = Math.min(3, (north - south) * 0.12);
@@ -80,6 +156,7 @@ function viewBounds(): { west: number; east: number; south: number; north: numbe
     east = Math.min(180, east + padLon);
     south = Math.max(-85, south - padLat);
     north = Math.min(85, north + padLat);
+    if (!(east > west) || !(north > south)) return null;
     return { west, east, south, north };
 }
 
@@ -133,13 +210,13 @@ export async function fetchWindGrid(signal?: AbortSignal): Promise<WindGrid | nu
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${mesh.lats.join(',')}`
         + `&longitude=${mesh.lons.join(',')}`
         + '&current=wind_speed_10m,wind_direction_10m'
-        + '&wind_speed_unit=ms&cell_selection=nearest&timezone=UTC&forecast_days=1';
+        + '&wind_speed_unit=ms&timezone=UTC&forecast_days=1';
     const body = await fetchJson<OmPoint | OmPoint[]>(url, { signal });
     const rows = Array.isArray(body) ? body : [body];
     const u = new Float32Array(mesh.nx * mesh.ny);
     const v = new Float32Array(mesh.nx * mesh.ny);
-    u.fill(NaN);
-    v.fill(NaN);
+    u.fill(Number.NaN);
+    v.fill(Number.NaN);
     let filled = 0;
     for (let i = 0; i < rows.length && i < u.length; i++) {
         const cur = rows[i]?.current;
@@ -152,6 +229,7 @@ export async function fetchWindGrid(signal?: AbortSignal): Promise<WindGrid | nu
         filled++;
     }
     if (!filled) throw new Error('No wind samples in view');
+    fillNaNs(u, v, mesh.nx, mesh.ny);
     return {
         west,
         east,

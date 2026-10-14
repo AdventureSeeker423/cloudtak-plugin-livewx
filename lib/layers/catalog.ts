@@ -89,7 +89,7 @@ export function registerCatalogLayers(): void {
     registerWmsLayer({
         id: 'rain_forecast',
         group: 'radar',
-        label: 'Rain Forecast',
+        label: 'Rain Forecast (1 Hour)',
         description: 'MRMS 1-hour precipitation',
         hosts: ['mesonet.agron.iastate.edu'],
         sends: 'Tiles',
