@@ -1,13 +1,19 @@
 /**
  * Registers Atmosphere-class map layers (clean-room; public HTTPS sources).
  */
-import { MAPSERVICES_NWS, NOWCOAST_WMS } from '../core/constants.ts';
+import { MAPSERVICES_NWS } from '../core/constants.ts';
 import type { LiveWxMap } from '../core/map-types.ts';
 import { mapOf } from '../core/map-host.ts';
 import { state } from '../core/state.ts';
 import { createGeoLayer, arcgisQueryUrl, mapEnvelope } from './geo-layer.ts';
 import { registerLayer } from './registry.ts';
-import { ensureRasterLayer, removeRaster, wmsTileUrl } from './wms.ts';
+import {
+    arcgisExportTileUrl,
+    ensureRasterLayer,
+    iemWmsTileUrl,
+    nowcoastTileUrl,
+    removeRaster,
+} from './wms.ts';
 
 function extentUrl(baseQuery: string): string | null {
     const env = mapEnvelope();
@@ -58,51 +64,48 @@ function registerWmsLayer(opts: {
 export function registerCatalogLayers(): void {
     // —— Alerts group also covered by existing WWA/Blitz modules via bridges ——
 
-    // Wind group
+    // Wind group — IEM WMS (colored, EPSG:3857). NOAA ImageServer png was
+    // painting opaque black; NDFD_temp MapServer time extent is stale.
     registerWmsLayer({
         id: 'satellite',
         group: 'wind',
         label: 'Satellite',
-        description: 'GOES IR / visible from nowCOAST',
-        hosts: ['nowcoast.noaa.gov'],
+        description: 'GOES CONUS infrared (Iowa State Mesonet)',
+        hosts: ['mesonet.agron.iastate.edu'],
         sends: 'Map tile requests only (no coordinates).',
         sourceId: 'livewx-sat-src',
         layerId: 'livewx-sat-lyr',
-        tileUrl: () => wmsTileUrl(
-            'https://nowcoast.noaa.gov/geoserver/satellite/wms',
-            'goes_east_conus_band13',
-        ),
+        tileUrl: () => iemWmsTileUrl('goes/conus_ir.cgi', 'conus_ir_4km'),
+        opacity: 0.75,
         keyHtml: 'Infrared cloud tops — brighter = colder/higher.',
     });
 
     registerWmsLayer({
         id: 'rain_forecast',
         group: 'wind',
-        label: 'Rain (forecast)',
-        description: 'Model QPF picture (WMS stand-in for NOMADS GRIB)',
-        hosts: ['mapservices.weather.noaa.gov'],
+        label: 'Rain (1h MRMS)',
+        description: 'MRMS 1-hour precip (stand-in for model QPF GRIB)',
+        hosts: ['mesonet.agron.iastate.edu'],
         sends: 'Map tile requests only.',
         sourceId: 'livewx-qpf-src',
         layerId: 'livewx-qpf-lyr',
-        tileUrl: () => `${MAPSERVICES_NWS}/arcgis/rest/services/weather_wx/MapServer/export?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&f=image&layers=show:3`,
-        experimental: true,
-        keyHtml: 'Light → heavy rain rate (model).',
+        tileUrl: () => iemWmsTileUrl('us/mrms.cgi', 'mrms_p1h'),
+        opacity: 0.7,
+        keyHtml: 'Radar-derived 1-hour precip. Empty where no rain.',
     });
 
     registerWmsLayer({
         id: 'wind_field',
         group: 'wind',
-        label: 'Wind',
-        description: 'Surface wind field (WMS stand-in for animated streaks)',
-        hosts: ['nowcoast.noaa.gov'],
+        label: 'Water Vapor',
+        description: 'GOES water vapor (steering-flow / moisture; particle wind GRIB not available)',
+        hosts: ['mesonet.agron.iastate.edu'],
         sends: 'Map tile requests only.',
         sourceId: 'livewx-wind-src',
         layerId: 'livewx-wind-lyr',
-        tileUrl: () => wmsTileUrl(
-            'https://nowcoast.noaa.gov/geoserver/guidance_model/wms',
-            'ndfd_wind_speed',
-        ),
-        keyHtml: 'Wind speed shading; not particle animation.',
+        tileUrl: () => iemWmsTileUrl('goes/conus_wv.cgi', 'conus_wv_4km'),
+        opacity: 0.7,
+        keyHtml: 'Mid/upper moisture — darker = drier air. Not surface wind barbs.',
     });
 
     // Fire
@@ -172,14 +175,17 @@ export function registerCatalogLayers(): void {
         id: 'smoke',
         group: 'fire',
         label: 'Smoke',
-        description: 'Smoke / haze imagery (WMS stand-in for NOMADS smoke GRIB)',
-        hosts: ['nowcoast.noaa.gov'],
+        description: 'NDGD surface smoke (1-hour average)',
+        hosts: ['mapservices.weather.noaa.gov'],
         sends: 'Map tile requests only.',
         sourceId: 'livewx-smoke-src',
         layerId: 'livewx-smoke-lyr',
-        tileUrl: () => wmsTileUrl(NOWCOAST_WMS.replace('weather_radar', 'smoke'), 'smoke_plume'),
-        experimental: true,
-        keyHtml: 'Ground/column smoke picture.',
+        tileUrl: () => arcgisExportTileUrl(
+            `${MAPSERVICES_NWS}/raster/rest/services/air_quality/ndgd_smoke_sfc_1hr_avg_time/ImageServer`,
+            'image',
+            { rasterFunction: 'smoke_don_0921' },
+        ),
+        keyHtml: 'Surface smoke concentration picture.',
     });
 
     createGeoLayer({
@@ -334,13 +340,13 @@ export function registerCatalogLayers(): void {
         id: 'rain_totals',
         group: 'rain_rivers',
         label: 'Rain Totals',
-        description: 'MRMS estimated precipitation (WMS)',
-        hosts: ['mapservices.weather.noaa.gov'],
+        description: 'MRMS 24-hour precipitation',
+        hosts: ['mesonet.agron.iastate.edu'],
         sends: 'Map tile requests only.',
         sourceId: 'livewx-mrms-src',
         layerId: 'livewx-mrms-lyr',
-        tileUrl: () => `${MAPSERVICES_NWS}/arcgis/rest/services/radar/radar_1km_rqi4/MapServer/export?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&f=image`,
-        keyHtml: 'Radar-estimated precip totals.',
+        tileUrl: () => iemWmsTileUrl('us/mrms.cgi', 'mrms_p24h'),
+        keyHtml: 'Radar-estimated 24-hour precip.',
     });
 
     createGeoLayer({
@@ -368,26 +374,30 @@ export function registerCatalogLayers(): void {
         id: 'flooded_ground',
         group: 'rain_rivers',
         label: 'Flooded Ground',
-        description: 'Experimental inundation (WMS stand-in)',
+        description: 'NWM analysis inundation extent',
         hosts: ['maps.water.noaa.gov'],
         sends: 'Map tile requests only.',
         sourceId: 'livewx-flood-src',
         layerId: 'livewx-flood-lyr',
-        tileUrl: () => 'https://maps.water.noaa.gov/server/rest/services/nwm/mrf_ana_inundation_extent/MapServer/export?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&f=image',
+        tileUrl: () => arcgisExportTileUrl(
+            'https://maps.water.noaa.gov/server/rest/services/nwm/ana_inundation_extent/MapServer',
+        ),
         experimental: true,
-        keyHtml: 'Inundation extent — experimental / partial coverage.',
+        keyHtml: 'Inundation extent — analysis / partial coverage.',
     });
 
     registerWmsLayer({
         id: 'high_flow',
         group: 'rain_rivers',
         label: 'Streams Running High',
-        description: 'High-water reaches (experimental)',
+        description: 'NWM high-flow magnitude',
         hosts: ['maps.water.noaa.gov'],
         sends: 'Map tile requests only.',
         sourceId: 'livewx-hiflo-src',
         layerId: 'livewx-hiflo-lyr',
-        tileUrl: () => 'https://maps.water.noaa.gov/server/rest/services/nwm/mrf_ana_anomalous_streamflow/MapServer/export?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&f=image',
+        tileUrl: () => arcgisExportTileUrl(
+            'https://maps.water.noaa.gov/server/rest/services/nwm/ana_high_flow_magnitude/MapServer',
+        ),
         experimental: true,
     });
 
@@ -425,16 +435,12 @@ export function registerCatalogLayers(): void {
         id: 'sst',
         group: 'ocean',
         label: 'Sea Temperature',
-        description: 'Sea surface temperature',
+        description: 'Global sea surface temperature (nowCOAST)',
         hosts: ['nowcoast.noaa.gov'],
         sends: 'Map tile requests only.',
         sourceId: 'livewx-sst-src',
         layerId: 'livewx-sst-lyr',
-        tileUrl: () => wmsTileUrl(
-            'https://nowcoast.noaa.gov/geoserver/analysis_meteohydro_sfc_rtma_time/wms',
-            'sea_surface_temperature',
-        ),
-        experimental: true,
+        tileUrl: () => nowcoastTileUrl('sea_surface_temperature:global_sea_surface_temperature'),
     });
 
     createGeoLayer({
@@ -473,18 +479,15 @@ export function registerCatalogLayers(): void {
     registerWmsLayer({
         id: 'waves',
         group: 'ocean',
-        label: 'Waves',
-        description: 'Sea state / wave height picture (WMS stand-in for NOMADS wave GRIB)',
+        label: 'Ocean Currents',
+        description: 'West Coast OFS surface currents (wave GRIB WMS retired on nowCOAST)',
         hosts: ['nowcoast.noaa.gov'],
         sends: 'Map tile requests only.',
         sourceId: 'livewx-wave-src',
         layerId: 'livewx-wave-lyr',
-        tileUrl: () => wmsTileUrl(
-            'https://nowcoast.noaa.gov/geoserver/guidance_model/wms',
-            'ndfd_wave_height',
-        ),
+        tileUrl: () => nowcoastTileUrl('wcofs:wcofs_sfc_currents'),
         experimental: true,
-        keyHtml: 'Significant wave height shading.',
+        keyHtml: 'Surface current field (WCOFS).',
     });
 
     // Storms
@@ -543,7 +546,9 @@ export function registerCatalogLayers(): void {
         sends: 'Map tile requests only.',
         sourceId: 'livewx-snowd-src',
         layerId: 'livewx-snowd-lyr',
-        tileUrl: () => `${MAPSERVICES_NWS}/raster/rest/services/observed_layers/NOHRSC_Snow_Analysis/MapServer/export?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&f=image`,
+        tileUrl: () => arcgisExportTileUrl(
+            `${MAPSERVICES_NWS}/raster/rest/services/snow/NOHRSC_Snow_Analysis/MapServer`,
+        ),
     });
 
     createGeoLayer({

@@ -281,11 +281,20 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 },
             });
             const ct = upstreamRes.headers.get('content-type') || 'application/octet-stream';
+            const buf = Buffer.from(await upstreamRes.arrayBuffer());
+            // MapLibre raster tiles must be real images — WMS often returns XML
+            // ServiceExceptions with HTTP 200; ArcGIS may return HTML error pages.
+            const wantsImage = /(?:GetMap|exportImage|\/export\b|format=png)/i.test(target.toString());
+            const looksPng = buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
+            const looksGif = buf.length >= 3 && buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46;
+            const looksJpeg = buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xd8;
+            if (wantsImage && upstreamRes.ok && !looksPng && !looksGif && !looksJpeg) {
+                throw new Err(502, null, `Upstream did not return an image (${ct})`);
+            }
             res.header('Content-Type', ct);
             // Avoid caching authenticated proxy responses in shared caches / SW.
             res.header('Cache-Control', 'private, no-store');
             res.status(upstreamRes.status);
-            const buf = Buffer.from(await upstreamRes.arrayBuffer());
             res.send(buf);
         } catch (err) {
             Err.respond(err, res);

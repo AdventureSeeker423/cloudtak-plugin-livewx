@@ -9,14 +9,13 @@ import type { LiveWxMap } from '../core/map-types.ts';
 import { mapOf } from '../core/map-host.ts';
 import { persist, state } from '../core/state.ts';
 import { registerLayer } from '../layers/registry.ts';
-import { ensureRasterLayer, removeRaster, wmsTileUrl } from '../layers/wms.ts';
-
-const DENSITY_WMS = 'https://nowcoast.noaa.gov/geoserver/lightning/wms';
+import { ensureRasterLayer, nowcoastTileUrl, removeRaster } from '../layers/wms.ts';
 
 let running = false;
 
 function tile(): string {
-    return wmsTileUrl(DENSITY_WMS, 'goes_glm_flash_extent_density');
+    // nowCOAST LDN strike density (workspace:layer from GetCapabilities).
+    return nowcoastTileUrl('lightning_detection:ldn_lightning_strike_density');
 }
 
 function paint(map: LiveWxMap): void {
