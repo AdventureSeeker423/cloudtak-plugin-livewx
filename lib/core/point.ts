@@ -1,14 +1,19 @@
 /**
- * Point mode controller: self / map center / pick / favorite → state.queryLat/Lon.
+ * Forecast location: last-used point, or map click while picking.
  */
+import { reactive } from 'vue';
 import type { PluginAPI } from '@tak-ps/cloudtak';
 import { roundCoord } from './egress.ts';
 import { mapOf } from './map-host.ts';
 import { persist, state } from './state.ts';
 
-let moveHandler: (() => void) | null = null;
+export const pointUi = reactive({
+    /** True while waiting for a map click to set the forecast location. */
+    picking: false,
+});
+
 let clickHandler: ((e: { lngLat?: { lat: number; lng: number } }) => void) | null = null;
-let selfTimer: ReturnType<typeof setInterval> | null = null;
+let onPicked: (() => void) | null = null;
 let apiRef: PluginAPI | null = null;
 
 function apply(lat: number, lon: number, place?: string): void {
@@ -17,112 +22,66 @@ function apply(lat: number, lon: number, place?: string): void {
     if (place != null) state.placeName = place;
 }
 
-function fromCenter(): void {
-    const map = mapOf();
-    if (!map?.getCenter) return;
-    const c = map.getCenter();
-    if (c && typeof c.lat === 'number' && typeof c.lng === 'number') {
-        apply(c.lat, c.lng);
-    }
+function setMapCursor(cursor: string): void {
+    const canvas = mapOf()?.getCanvas?.();
+    if (canvas) canvas.style.cursor = cursor;
 }
 
-function fromFavorite(): void {
-    const fav = state.favorites.find((f) => f.id === state.favoriteId);
-    if (fav) apply(fav.lat, fav.lon, fav.name);
-}
-
-function fromPick(): void {
-    if (state.pickLat != null && state.pickLon != null) {
-        apply(state.pickLat, state.pickLon, 'Picked point');
-    } else {
-        fromCenter();
-    }
-}
-
-async function fromSelf(): Promise<void> {
-    try {
-        if (!navigator.geolocation) {
-            fromCenter();
-            return;
-        }
-        await new Promise<void>((resolve) => {
-            navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                    apply(pos.coords.latitude, pos.coords.longitude, 'My position');
-                    resolve();
-                },
-                () => {
-                    fromCenter();
-                    resolve();
-                },
-                { enableHighAccuracy: false, maximumAge: 60_000, timeout: 8_000 },
-            );
-        });
-    } catch {
-        fromCenter();
-    }
-}
-
+/** Restore last-used forecast point (if any). Does not invent a location. */
 export async function refreshQueryPoint(): Promise<void> {
-    switch (state.pointMode) {
-        case 'self':
-            await fromSelf();
-            break;
-        case 'favorite':
-            fromFavorite();
-            break;
-        case 'pick':
-            fromPick();
-            break;
-        case 'center':
-        default:
-            fromCenter();
-            break;
+    if (state.pickLat != null && state.pickLon != null) {
+        apply(
+            state.pickLat,
+            state.pickLon,
+            state.placeName || undefined,
+        );
+        return;
     }
+    state.queryLat = null;
+    state.queryLon = null;
+}
+
+export function beginLocationPick(afterPick?: () => void): void {
+    pointUi.picking = true;
+    onPicked = afterPick ?? null;
+    setMapCursor('crosshair');
+}
+
+export function cancelLocationPick(): void {
+    pointUi.picking = false;
+    onPicked = null;
+    setMapCursor('');
 }
 
 export function initPointController(api: PluginAPI): void {
     apiRef = api;
     const map = mapOf();
     if (map) {
-        moveHandler = () => {
-            if (state.pointMode === 'center') fromCenter();
-        };
-        map.on('moveend', moveHandler);
         clickHandler = (e) => {
-            if (state.pointMode !== 'pick') return;
+            if (!pointUi.picking) return;
             const ll = e.lngLat;
             if (!ll) return;
             state.pickLat = roundCoord(ll.lat);
             state.pickLon = roundCoord(ll.lng);
-            apply(state.pickLat, state.pickLon, 'Picked point');
+            apply(state.pickLat, state.pickLon, `${state.pickLat}, ${state.pickLon}`);
             persist();
+            const cb = onPicked;
+            cancelLocationPick();
+            cb?.();
         };
         map.on('click', clickHandler);
     }
-    if (selfTimer) clearInterval(selfTimer);
-    selfTimer = setInterval(() => {
-        if (state.pointMode === 'self') void fromSelf();
-    }, 60_000);
     void refreshQueryPoint();
     void apiRef;
 }
 
 export function destroyPointController(): void {
+    cancelLocationPick();
     const map = mapOf();
-    if (map) {
-        if (moveHandler) {
-            try { map.off('moveend', moveHandler); } catch { /* ignore */ }
-        }
-        if (clickHandler) {
-            try { map.off('click', clickHandler); } catch { /* ignore */ }
-        }
+    if (map && clickHandler) {
+        try { map.off('click', clickHandler); } catch { /* ignore */ }
     }
-    if (selfTimer) {
-        clearInterval(selfTimer);
-        selfTimer = null;
-    }
-    moveHandler = null;
     clickHandler = null;
+    onPicked = null;
     apiRef = null;
 }

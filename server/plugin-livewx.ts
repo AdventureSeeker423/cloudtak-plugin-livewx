@@ -274,7 +274,8 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             if (target.protocol !== 'https:' || !PROXY_ALLOW.has(target.hostname)) {
                 throw new Err(403, null, 'Host not allowlisted');
             }
-            const upstreamRes = await fetch(target.toString(), {
+            // target.href re-serializes query values (needed for ArcGIS renderingRule JSON).
+            const upstreamRes = await fetch(target.href, {
                 headers: {
                     Accept: 'application/geo+json, application/json, image/*, */*',
                     'User-Agent': 'CloudTAK-LiveWX-Relay/2.0',

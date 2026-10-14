@@ -13,7 +13,13 @@ import {
 } from '../core/constants.ts';
 import type { LiveWxMap } from '../core/map-types.ts';
 import { state } from '../core/state.ts';
-import { SURFACE_BG, SURFACE_BORDER, SURFACE_FG, syncSidebarTheme } from '../core/theme.ts';
+import {
+    closeFeaturePopup,
+    escapeHtml,
+    hitsFeaturePopupLayers,
+    showFeatureHtml,
+} from '../layers/feature-popup.ts';
+import { pointUi } from '../core/point.ts';
 
 interface AlertProps {
     event?: string;
@@ -77,80 +83,6 @@ function colorForEvent(event: string): string {
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let mapRef: LiveWxMap | null = null;
-let popup: { remove: () => void } | null = null;
-
-const POPUP_STYLE_ID = 'livewx-alert-popup-style';
-
-function ensurePopupStyle(): void {
-    if (document.getElementById(POPUP_STYLE_ID)) return;
-    const el = document.createElement('style');
-    el.id = POPUP_STYLE_ID;
-    el.textContent = `
-.livewx-alert-popup .maplibregl-popup-content {
-    color: ${SURFACE_FG};
-    background: ${SURFACE_BG};
-    border: 1px solid ${SURFACE_BORDER};
-    padding: 12px 32px 12px 12px;
-    border-radius: 8px;
-    box-shadow: var(--tblr-box-shadow-lg, 0 4px 18px rgba(0, 0, 0, 0.35));
-    font: 13px/1.45 var(--tblr-font-sans-serif, system-ui, Segoe UI, sans-serif);
-}
-.livewx-alert-popup .maplibregl-popup-close-button {
-    color: var(--tblr-secondary, var(--bs-secondary-color, inherit));
-    font-size: 18px;
-    padding: 4px 8px;
-}
-.livewx-alert-popup .maplibregl-popup-close-button:hover {
-    color: ${SURFACE_FG};
-    background: transparent;
-}
-.livewx-alert-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
-.livewx-alert-popup.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
-.livewx-alert-popup.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
-    border-top-color: ${SURFACE_BG};
-}
-.livewx-alert-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip,
-.livewx-alert-popup.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
-.livewx-alert-popup.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
-    border-bottom-color: ${SURFACE_BG};
-}
-.livewx-alert-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
-    border-right-color: ${SURFACE_BG};
-}
-.livewx-alert-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
-    border-left-color: ${SURFACE_BG};
-}
-.livewx-alert-card {
-    max-width: 400px;
-    max-height: 60vh;
-    overflow: auto;
-}
-.livewx-alert-title {
-    color: ${SURFACE_FG};
-    font-size: 15px;
-    font-weight: 700;
-    margin-bottom: 8px;
-}
-.livewx-alert-body {
-    color: ${SURFACE_FG};
-}
-.livewx-alert-body p {
-    margin: 0 0 0.7em;
-}
-.livewx-alert-body p:last-child,
-.livewx-alert-list:last-child {
-    margin-bottom: 0;
-}
-.livewx-alert-list {
-    margin: 0 0 0.7em;
-    padding-left: 1.15em;
-}
-.livewx-alert-list li {
-    margin: 0 0 0.35em;
-}
-`;
-    document.head.appendChild(el);
-}
 
 function isWatchOrWarning(event: string): boolean {
     return WATCH_OR_WARNING.test(event.trim());
@@ -265,14 +197,6 @@ async function refresh(map: LiveWxMap): Promise<void> {
     }
 }
 
-function escapeHtml(value: string): string {
-    return value
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;');
-}
-
 function textOf(value: unknown): string {
     return typeof value === 'string' ? value.trim() : '';
 }
@@ -353,35 +277,7 @@ async function showPopup(
     lngLat: { lng: number; lat: number },
     props: AlertProps,
 ): Promise<void> {
-    ensurePopupStyle();
-    syncSidebarTheme();
-    popup?.remove();
-    const html = alertHtml(props);
-
-    try {
-        const ml = await import('maplibre-gl') as {
-            Popup?: new (opts: object) => {
-                setLngLat: (ll: object) => { setHTML: (h: string) => { addTo: (m: unknown) => { remove: () => void } } };
-                remove: () => void;
-            };
-            default?: { Popup?: new (opts: object) => {
-                setLngLat: (ll: object) => { setHTML: (h: string) => { addTo: (m: unknown) => { remove: () => void } } };
-                remove: () => void;
-            } };
-        };
-        const Popup = ml.Popup ?? ml.default?.Popup;
-        if (!Popup) return;
-        popup = new Popup({
-            closeButton: true,
-            maxWidth: '420px',
-            className: 'livewx-alert-popup',
-        })
-            .setLngLat(lngLat)
-            .setHTML(html)
-            .addTo(map);
-    } catch {
-        /* popup optional */
-    }
+    await showFeatureHtml(map, lngLat, alertHtml(props));
 }
 
 const OVERLAY_HIT_LAYERS = [
@@ -436,9 +332,12 @@ function onAlertClick(e: {
     lngLat?: { lng: number; lat: number };
     point?: unknown;
 }): void {
+    if (pointUi.picking) return;
     const map = mapRef;
     if (!map || !e.lngLat || e.point == null) return;
     if (hitsAt(map, e.point, OVERLAY_HIT_LAYERS).length) return;
+    // Buoys / quakes / zones / etc. own their clicks.
+    if (hitsFeaturePopupLayers(map, e.point)) return;
 
     // Top-most feature first. A point CoT drawn above the polygon wins;
     // the watch/warning is ignored and the CoT selection proceeds.
@@ -472,8 +371,7 @@ export function stopAlerts(): void {
         clearInterval(pollTimer);
         pollTimer = null;
     }
-    popup?.remove();
-    popup = null;
+    closeFeaturePopup();
     state.alertCount = 0;
     if (mapRef) {
         try { mapRef.off('click', onAlertClick); } catch { /* ignore */ }

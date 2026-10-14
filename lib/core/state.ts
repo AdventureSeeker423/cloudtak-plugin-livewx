@@ -83,7 +83,7 @@ function load(): PersistedSettings {
         sitesOnMap: false,
         page: 'home',
         units: 'us',
-        pointMode: 'center',
+        pointMode: 'pick',
         pickLat: null,
         pickLon: null,
         favoriteId: null,
@@ -120,7 +120,8 @@ function load(): PersistedSettings {
             sitesOnMap: Boolean(parsed.sitesOnMap),
             page,
             units: (parsed.units as UnitSystem) || defaults.units,
-            pointMode: (parsed.pointMode as PointMode) || defaults.pointMode,
+            // Location is last-used pick only; legacy modes (self/center/favorite) map to pick.
+            pointMode: 'pick',
             pickLat: typeof parsed.pickLat === 'number' ? parsed.pickLat : null,
             pickLon: typeof parsed.pickLon === 'number' ? parsed.pickLon : null,
             favoriteId: typeof parsed.favoriteId === 'string' ? parsed.favoriteId : null,

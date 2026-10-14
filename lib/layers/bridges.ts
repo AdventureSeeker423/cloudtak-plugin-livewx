@@ -12,7 +12,7 @@ export function registerBridgeLayers(): void {
         id: 'nws_wwa',
         group: 'alerts',
         label: 'WWA',
-        description: 'NWS watches, warnings, advisories',
+        description: 'NWS Watches, Warnings, Advisories',
         hosts: ['api.weather.gov'],
         sends: 'Alerts feed',
         start: () => {
@@ -37,7 +37,7 @@ export function registerBridgeLayers(): void {
         id: 'blitzortung',
         group: 'alerts',
         label: 'Lightning',
-        description: 'Blitzortung live strikes',
+        description: 'Blitzortung Live Strikes',
         hosts: ['(relay)'],
         sends: 'Relay poll',
         start: () => {
@@ -59,7 +59,7 @@ export function registerBridgeLayers(): void {
     registerLayer({
         id: 'radar_overlay',
         group: 'radar',
-        label: 'Radar',
+        label: 'NEXRAD Radar',
         description: 'NEXRAD overlay',
         hosts: ['mesonet.agron.iastate.edu', 'api.rainviewer.com', 'tilecache.rainviewer.com'],
         sends: 'Tiles',

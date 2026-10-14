@@ -17,7 +17,8 @@ import {
 function extentUrl(baseQuery: string): string | null {
     const env = mapEnvelope();
     if (!env) return baseQuery;
-    return `${baseQuery}${baseQuery.includes('?') ? '&' : '?'}geometry=${encodeURIComponent(env)}&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects`;
+    // Leave geometry unencoded — viaProxy encodes the whole URL once.
+    return `${baseQuery}${baseQuery.includes('?') ? '&' : '?'}geometry=${env}&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects`;
 }
 
 function registerWmsLayer(opts: {
@@ -73,9 +74,9 @@ function registerWmsLayer(opts: {
 export function registerCatalogLayers(): void {
     registerWmsLayer({
         id: 'satellite',
-        group: 'wind',
-        label: 'Satellite',
-        description: 'GOES IR',
+        group: 'radar',
+        label: 'GOES Infrared',
+        description: 'GOES CONUS IR',
         hosts: ['mesonet.agron.iastate.edu'],
         sends: 'Tiles',
         sourceId: 'livewx-sat-src',
@@ -86,9 +87,9 @@ export function registerCatalogLayers(): void {
 
     registerWmsLayer({
         id: 'rain_forecast',
-        group: 'wind',
-        label: 'Rain 1h',
-        description: 'MRMS 1h',
+        group: 'radar',
+        label: 'MRMS Rain (1h)',
+        description: 'MRMS 1-hour precipitation',
         hosts: ['mesonet.agron.iastate.edu'],
         sends: 'Tiles',
         sourceId: 'livewx-qpf-src',
@@ -98,10 +99,40 @@ export function registerCatalogLayers(): void {
     });
 
     registerWmsLayer({
+        id: 'rain_12h',
+        group: 'radar',
+        label: 'MRMS Rain (12h)',
+        description: 'MRMS 12-hour QPE',
+        hosts: ['mapservices.weather.noaa.gov'],
+        sends: 'Tiles',
+        sourceId: 'livewx-mrms12-src',
+        layerId: 'livewx-mrms12-lyr',
+        tileUrl: () => arcgisExportTileUrl(
+            `${MAPSERVICES_NWS}/raster/rest/services/obs/mrms_qpe/ImageServer`,
+            'image',
+            { rasterFunction: 'rft_12hr' },
+        ),
+        opacity: 0.7,
+    });
+
+    registerWmsLayer({
+        id: 'rain_totals',
+        group: 'radar',
+        label: 'MRMS Rain (24h)',
+        description: 'MRMS 24-hour precipitation',
+        hosts: ['mesonet.agron.iastate.edu'],
+        sends: 'Tiles',
+        sourceId: 'livewx-mrms-src',
+        layerId: 'livewx-mrms-lyr',
+        tileUrl: () => iemWmsTileUrl('us/mrms.cgi', 'mrms_p24h'),
+        opacity: 0.7,
+    });
+
+    registerWmsLayer({
         id: 'wind_field',
-        group: 'wind',
-        label: 'Water vapor',
-        description: 'GOES WV',
+        group: 'radar',
+        label: 'Water Vapor',
+        description: 'GOES CONUS water vapor',
         hosts: ['mesonet.agron.iastate.edu'],
         sends: 'Tiles',
         sourceId: 'livewx-wind-src',
@@ -110,26 +141,27 @@ export function registerCatalogLayers(): void {
         opacity: 0.7,
     });
 
-    createGeoLayer({
+    registerWmsLayer({
         id: 'fire_outlook',
         group: 'more',
-        label: 'Fire outlook',
-        description: 'SPC fire weather Day 1',
+        label: 'Fire Outlook',
+        description: 'SPC fire weather Day 1–2',
         hosts: ['mapservices.weather.noaa.gov'],
-        sends: 'Extent query',
+        sends: 'Tiles',
         sourceId: 'livewx-fwo-src',
-        fillId: 'livewx-fwo-fill',
-        lineId: 'livewx-fwo-line',
-        fillColor: '#fd7e14',
-        url: () => extentUrl(
-            `${MAPSERVICES_NWS}/vector/rest/services/fire_outlook/MapServer/0/query?where=1%3D1&outFields=*&returnGeometry=true&outSR=4326&f=geojson`,
+        layerId: 'livewx-fwo-lyr',
+        tileUrl: () => arcgisExportTileUrl(
+            `${MAPSERVICES_NWS}/vector/rest/services/fire_weather/SPC_firewx/MapServer`,
+            'map',
+            { layers: 'show:1,2' },
         ),
+        opacity: 0.65,
     });
 
     createGeoLayer({
         id: 'fw_zones',
         group: 'more',
-        label: 'Fire zones',
+        label: 'Fire Zones',
         description: 'NWS fire weather zones',
         hosts: ['mapservices.weather.noaa.gov'],
         sends: 'Extent query',
@@ -139,8 +171,9 @@ export function registerCatalogLayers(): void {
         fillColor: '#ae3ec9',
         fillOpacity: 0.12,
         lineColor: '#9c36b5',
+        titleKeys: ['name', 'ZONE', 'zone', 'STATE', 'state'],
         url: () => extentUrl(
-            `${MAPSERVICES_NWS}/vector/rest/services/outlooks/forecast_zones_firewx/MapServer/0/query?where=1%3D1&outFields=*&returnGeometry=true&outSR=4326&f=geojson`,
+            `${MAPSERVICES_NWS}/static/rest/services/nws_reference_maps/nws_reference_map/MapServer/9/query?where=1=1&outFields=*&returnGeometry=true&outSR=4326&f=geojson`,
         ),
     });
 
@@ -156,14 +189,13 @@ export function registerCatalogLayers(): void {
         tileUrl: () => arcgisExportTileUrl(
             `${MAPSERVICES_NWS}/raster/rest/services/air_quality/ndgd_smoke_sfc_1hr_avg_time/ImageServer`,
             'image',
-            { rasterFunction: 'smoke_don_0921' },
         ),
     });
 
     createGeoLayer({
         id: 'air_quality',
         group: 'more',
-        label: 'Air quality',
+        label: 'Air Quality',
         description: 'AirNow AQI',
         hosts: ['services.arcgis.com'],
         sends: 'Extent query',
@@ -171,9 +203,10 @@ export function registerCatalogLayers(): void {
         fillId: 'livewx-aqi-fill',
         lineId: 'livewx-aqi-line',
         fillColor: '#74b816',
+        titleKeys: ['gridcode', 'AQI', 'aqi', 'category', 'parameter'],
         url: () => extentUrl(
             arcgisQueryUrl(
-                'https://services.arcgis.com/cJ9YCMLtNAtEZIVI/arcgis/rest/services/AirNowLatestContoursCombined/FeatureServer/0',
+                'https://services.arcgis.com/cJ9YHowT8TU7DUyn/arcgis/rest/services/AirNowLatestContoursCombined/FeatureServer/0',
                 { resultRecordCount: '500' },
             ),
         ),
@@ -182,44 +215,34 @@ export function registerCatalogLayers(): void {
     createGeoLayer({
         id: 'flash_flood',
         group: 'more',
-        label: 'Flash flood',
-        description: 'WPC ERO',
+        label: 'Flash Flood',
+        description: 'WPC excessive rainfall Day 1',
         hosts: ['mapservices.weather.noaa.gov'],
         sends: 'Extent query',
         sourceId: 'livewx-ero-src',
         fillId: 'livewx-ero-fill',
         lineId: 'livewx-ero-line',
         fillColor: '#2f9e44',
+        titleKeys: ['outlook', 'OUTLOOK', 'risk', 'RISK', 'label', 'LABEL'],
         url: () => extentUrl(
-            `${MAPSERVICES_NWS}/vector/rest/services/outlooks/wpc_excessive_rainfall/MapServer/0/query?where=1%3D1&outFields=*&returnGeometry=true&outSR=4326&f=geojson`,
+            `${MAPSERVICES_NWS}/vector/rest/services/hazards/wpc_precip_hazards/MapServer/0/query?where=1=1&outFields=*&returnGeometry=true&outSR=4326&f=geojson`,
         ),
     });
 
     createGeoLayer({
         id: 'river_gauges',
         group: 'more',
-        label: 'River gauges',
-        description: 'AHPS gauges',
+        label: 'River Gauges',
+        description: 'AHPS river stages',
         hosts: ['mapservices.weather.noaa.gov'],
         sends: 'Extent query',
         sourceId: 'livewx-riv-src',
         circleId: 'livewx-riv-circle',
         circleColor: '#1c7ed6',
+        titleKeys: ['gaugelid', 'location', 'waterbody', 'name'],
         url: () => extentUrl(
-            `${MAPSERVICES_NWS}/vector/rest/services/hydro/ahps_gauges/MapServer/0/query?where=1%3D1&outFields=*&returnGeometry=true&outSR=4326&f=geojson&resultRecordCount=500`,
+            `${MAPSERVICES_NWS}/eventdriven/rest/services/water/riv_gauges/MapServer/0/query?where=1=1&outFields=*&returnGeometry=true&outSR=4326&f=geojson&resultRecordCount=500`,
         ),
-    });
-
-    registerWmsLayer({
-        id: 'rain_totals',
-        group: 'more',
-        label: 'Rain 24h',
-        description: 'MRMS 24h',
-        hosts: ['mesonet.agron.iastate.edu'],
-        sends: 'Tiles',
-        sourceId: 'livewx-mrms-src',
-        layerId: 'livewx-mrms-lyr',
-        tileUrl: () => iemWmsTileUrl('us/mrms.cgi', 'mrms_p24h'),
     });
 
     createGeoLayer({
@@ -232,6 +255,7 @@ export function registerCatalogLayers(): void {
         sourceId: 'livewx-buoy-src',
         circleId: 'livewx-buoy-circle',
         circleColor: '#0ca678',
+        titleKeys: ['name', 'id', 'owner'],
         url: () => 'https://www.ndbc.noaa.gov/ndbcmapstations.json',
         parse: (raw) => {
             const st = (raw as { station?: Array<Record<string, string>> }).station ?? [];
@@ -251,21 +275,6 @@ export function registerCatalogLayers(): void {
     });
 
     createGeoLayer({
-        id: 'hurricanes',
-        group: 'more',
-        label: 'Hurricanes',
-        description: 'NHC tropical',
-        hosts: ['mapservices.weather.noaa.gov'],
-        sends: 'Feature query',
-        sourceId: 'livewx-nhc-src',
-        fillId: 'livewx-nhc-fill',
-        lineId: 'livewx-nhc-line',
-        fillColor: '#f03e3e',
-        fillOpacity: 0.15,
-        url: () => `${MAPSERVICES_NWS}/vector/rest/services/tropical/NHC_tropical_weather/MapServer/0/query?where=1%3D1&outFields=*&returnGeometry=true&outSR=4326&f=geojson`,
-    });
-
-    createGeoLayer({
         id: 'avalanche',
         group: 'more',
         label: 'Avalanche',
@@ -276,13 +285,14 @@ export function registerCatalogLayers(): void {
         fillId: 'livewx-avy-fill',
         lineId: 'livewx-avy-line',
         fillColor: '#7048e8',
+        titleKeys: ['center', 'name', 'danger', 'published_time_display'],
         url: () => 'https://api.avalanche.org/v2/public/products/map-layer',
     });
 
     registerWmsLayer({
         id: 'snow_depth',
         group: 'more',
-        label: 'Snow depth',
+        label: 'Snow Depth',
         description: 'NOHRSC snow',
         hosts: ['mapservices.weather.noaa.gov'],
         sends: 'Tiles',
@@ -304,13 +314,14 @@ export function registerCatalogLayers(): void {
         circleId: 'livewx-eq-circle',
         circleColor: '#e64980',
         circleRadius: 6,
+        titleKeys: ['mag', 'place', 'title'],
         url: () => 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_week.geojson',
     });
 
     registerLayer({
         id: 'radar_sites',
         group: 'radar',
-        label: 'Radar sites',
+        label: 'Radar Sites',
         description: 'Site markers',
         hosts: [],
         sends: 'Local',

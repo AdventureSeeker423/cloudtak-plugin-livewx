@@ -10,9 +10,11 @@ import { syncSidebarTheme } from './core/theme.ts';
 import { refreshForecast } from './forecast/engine.ts';
 import { registerBridgeLayers } from './layers/bridges.ts';
 import { registerCatalogLayers } from './layers/catalog.ts';
+import { registerHurricaneLayer } from './layers/hurricanes.ts';
 import { startEnabledLayers, stopAllLayers } from './layers/registry.ts';
 import { registerDensityLayer, applyDensityFromState } from './lightning/density.ts';
 import { destroy as destroyRadar, init as initRadar } from './radar/radar.ts';
+import { registerWindLayer } from './wind/particles.ts';
 
 let wired = false;
 let forecastTimer: ReturnType<typeof setInterval> | null = null;
@@ -21,7 +23,9 @@ function ensureCatalog(): void {
     if (wired) return;
     registerBridgeLayers();
     registerCatalogLayers();
+    registerHurricaneLayer();
     registerDensityLayer();
+    registerWindLayer();
     wired = true;
 }
 

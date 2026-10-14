@@ -34,7 +34,7 @@ export function registerDensityLayer(): void {
         id: 'lightning_density',
         group: 'alerts',
         label: 'Density',
-        description: 'GLM flash density (delayed)',
+        description: 'Lightning Density (Delayed)',
         hosts: ['nowcoast.noaa.gov'],
         sends: 'Tiles',
         defaultOpacity: DEFAULT_OPACITY,

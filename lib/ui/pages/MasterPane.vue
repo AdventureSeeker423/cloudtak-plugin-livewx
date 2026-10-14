@@ -19,47 +19,91 @@
         </section>
 
         <section class='sec'>
-            <div class='sec-head'>
+            <h3 class='sec-title mb-2'>
+                Radar
+            </h3>
+            <div class='layer-row mb-2'>
+                <div class='sec-head mb-0'>
+                    <div class='form-check form-switch mb-0'>
+                        <input
+                            id='m-radar'
+                            class='form-check-input'
+                            type='checkbox'
+                            :checked='enabled.radar_overlay'
+                            :disabled='Boolean(layerUi.busy.radar_overlay)'
+                            @change='toggle("radar_overlay", $event)'
+                        >
+                        <label
+                            class='form-check-label'
+                            for='m-radar'
+                        >NEXRAD Radar</label>
+                    </div>
+                    <button
+                        class='btn btn-sm btn-outline-secondary'
+                        type='button'
+                        @click='go("radar")'
+                    >
+                        Settings
+                    </button>
+                </div>
+                <div
+                    v-if='enabled.radar_overlay'
+                    class='opacity-row'
+                >
+                    <label
+                        class='form-label small mb-1'
+                        for='m-op-radar_overlay'
+                    >Opacity {{ pct('radar_overlay') }}%</label>
+                    <input
+                        id='m-op-radar_overlay'
+                        class='form-range mb-0'
+                        type='range'
+                        min='0'
+                        max='100'
+                        step='1'
+                        :value='pct("radar_overlay")'
+                        @input='onOpacity("radar_overlay", $event)'
+                    >
+                </div>
+            </div>
+            <div
+                v-for='row in radarRows'
+                :key='row.id'
+                class='layer-row mb-2'
+            >
                 <div class='form-check form-switch mb-0'>
                     <input
-                        id='m-radar'
+                        :id='`m-${row.id}`'
                         class='form-check-input'
                         type='checkbox'
-                        :checked='enabled.radar_overlay'
-                        :disabled='Boolean(layerUi.busy.radar_overlay)'
-                        @change='toggle("radar_overlay", $event)'
+                        :checked='enabled[row.id]'
+                        :disabled='Boolean(layerUi.busy[row.id])'
+                        @change='toggle(row.id, $event)'
                     >
                     <label
                         class='form-check-label'
-                        for='m-radar'
-                    >Radar</label>
+                        :for='`m-${row.id}`'
+                    >{{ row.label }}</label>
                 </div>
-                <button
-                    class='btn btn-sm btn-outline-secondary'
-                    type='button'
-                    @click='go("radar")'
+                <div
+                    v-if='enabled[row.id]'
+                    class='opacity-row'
                 >
-                    Settings
-                </button>
-            </div>
-            <div
-                v-if='enabled.radar_overlay'
-                class='opacity-row'
-            >
-                <label
-                    class='form-label small mb-1'
-                    for='m-op-radar_overlay'
-                >Opacity {{ pct('radar_overlay') }}%</label>
-                <input
-                    id='m-op-radar_overlay'
-                    class='form-range mb-0'
-                    type='range'
-                    min='0'
-                    max='100'
-                    step='1'
-                    :value='pct("radar_overlay")'
-                    @input='onOpacity("radar_overlay", $event)'
-                >
+                    <label
+                        class='form-label small mb-1'
+                        :for='`m-op-${row.id}`'
+                    >Opacity {{ pct(row.id) }}%</label>
+                    <input
+                        :id='`m-op-${row.id}`'
+                        class='form-range mb-0'
+                        type='range'
+                        min='0'
+                        max='100'
+                        step='1'
+                        :value='pct(row.id)'
+                        @input='onOpacity(row.id, $event)'
+                    >
+                </div>
             </div>
         </section>
 
@@ -233,10 +277,10 @@
                             :for='`m-${row.id}`'
                         >{{ row.label }}</label>
                     </div>
-                    <div
-                        v-if='enabled[row.id] && row.opacity'
-                        class='opacity-row'
-                    >
+                <div
+                    v-if='enabled[row.id] && row.opacity'
+                    class='opacity-row'
+                >
                         <label
                             class='form-label small mb-1'
                             :for='`m-op-${row.id}`'
@@ -273,33 +317,39 @@ import {
 
 const moreOpen = ref(false);
 
+const radarRows = [
+    { id: 'satellite', label: 'GOES Infrared' },
+    { id: 'rain_forecast', label: 'MRMS Rain (1h)' },
+    { id: 'rain_12h', label: 'MRMS Rain (12h)' },
+    { id: 'rain_totals', label: 'MRMS Rain (24h)' },
+    { id: 'wind_field', label: 'Water Vapor' },
+];
+
 const windRows = [
-    { id: 'satellite', label: 'Satellite' },
-    { id: 'rain_forecast', label: 'Rain 1h' },
-    { id: 'wind_field', label: 'Water vapor' },
+    { id: 'surface_wind', label: 'Surface Wind' },
 ];
 
 const moreRows = [
-    { id: 'fire_outlook', label: 'Fire outlook', opacity: false },
-    { id: 'fw_zones', label: 'Fire zones', opacity: false },
+    { id: 'fire_outlook', label: 'Fire Outlook', opacity: true },
+    { id: 'fw_zones', label: 'Fire Zones', opacity: false },
     { id: 'smoke', label: 'Smoke', opacity: true },
-    { id: 'air_quality', label: 'Air quality', opacity: false },
-    { id: 'flash_flood', label: 'Flash flood', opacity: false },
-    { id: 'river_gauges', label: 'River gauges', opacity: false },
-    { id: 'rain_totals', label: 'Rain 24h', opacity: true },
+    { id: 'air_quality', label: 'Air Quality', opacity: false },
+    { id: 'flash_flood', label: 'Flash Flood', opacity: false },
+    { id: 'river_gauges', label: 'River Gauges', opacity: false },
     { id: 'buoys', label: 'Buoys', opacity: false },
     { id: 'hurricanes', label: 'Hurricanes', opacity: false },
     { id: 'avalanche', label: 'Avalanche', opacity: false },
-    { id: 'snow_depth', label: 'Snow depth', opacity: true },
+    { id: 'snow_depth', label: 'Snow Depth', opacity: true },
     { id: 'earthquakes', label: 'Earthquakes', opacity: false },
 ];
 
 const allIds = [
     'radar_overlay',
+    ...radarRows.map((r) => r.id),
+    ...windRows.map((r) => r.id),
     'nws_wwa',
     'blitzortung',
     'lightning_density',
-    ...windRows.map((r) => r.id),
     ...moreRows.map((r) => r.id),
 ];
 
@@ -331,8 +381,8 @@ const forecastLine = computed(() => {
     const src = listSources().find((s) => s.sourceId === state.forecastSourceId);
     const name = src?.displayName ?? state.forecastSourceId;
     const place = state.placeName
-        || (state.queryLat != null ? `${state.queryLat}, ${state.queryLon}` : '—');
-    if (forecast.error) return `${name} · ${forecast.error}`;
+        || (state.queryLat != null ? `${state.queryLat}, ${state.queryLon}` : 'No location');
+    if (forecast.error && state.queryLat != null) return `${name} · ${forecast.error}`;
     return `${name} · ${place}`;
 });
 

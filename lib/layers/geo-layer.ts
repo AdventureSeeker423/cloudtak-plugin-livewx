@@ -7,6 +7,10 @@ import { emptyFeatureCollection } from '../core/geojson.ts';
 import type { LiveWxMap } from '../core/map-types.ts';
 import { firstSymbolLayer } from '../core/map-host.ts';
 import {
+    registerFeatureLayers,
+    unregisterFeatureLayers,
+} from './feature-popup.ts';
+import {
     emptyFc,
     ensureGeoJsonSource,
     mapOf,
@@ -37,6 +41,8 @@ export type GeoLayerOpts = {
     circleColor?: string;
     circleRadius?: number;
     pollMs?: number;
+    /** Preferred property keys for the click-detail title. */
+    titleKeys?: string[];
     /** Build the fetch URL (may use map bounds). */
     url: () => string | null;
     /** Transform raw JSON into a FeatureCollection. */
@@ -148,7 +154,12 @@ export function createGeoLayer(opts: GeoLayerOpts): LayerDef {
         opts.paintExtra?.(map);
     }
 
+    function paintIds(): string[] {
+        return [opts.fillId, opts.lineId, opts.circleId].filter((id): id is string => Boolean(id));
+    }
+
     function clear(map: LiveWxMap | null): void {
+        unregisterFeatureLayers(paintIds());
         if (!map) return;
         if (opts.fillId) removeLayerSafe(map, opts.fillId);
         if (opts.lineId) removeLayerSafe(map, opts.lineId);
@@ -167,6 +178,10 @@ export function createGeoLayer(opts: GeoLayerOpts): LayerDef {
         keyHtml: opts.keyHtml,
         start: async () => {
             running = true;
+            registerFeatureLayers(paintIds(), {
+                label: opts.label,
+                titleKeys: opts.titleKeys,
+            });
             await refresh();
             if (timer) clearInterval(timer);
             timer = setInterval(() => { void refresh(); }, opts.pollMs ?? 300_000);
@@ -183,6 +198,10 @@ export function createGeoLayer(opts: GeoLayerOpts): LayerDef {
         },
         restore: (map) => {
             if (!running) return;
+            registerFeatureLayers(paintIds(), {
+                label: opts.label,
+                titleKeys: opts.titleKeys,
+            });
             paint(map);
         },
         status: () => {
@@ -196,21 +215,27 @@ export function createGeoLayer(opts: GeoLayerOpts): LayerDef {
     return def;
 }
 
-/** ArcGIS FeatureServer query URL helper. */
+/**
+ * ArcGIS FeatureServer/MapServer query URL.
+ * Values stay unencoded — viaProxy() applies a single encodeURIComponent pass
+ * (URLSearchParams would double-encode through the proxy and ArcGIS returns 400).
+ */
 export function arcgisQueryUrl(serviceUrl: string, extra: Record<string, string> = {}): string {
-    const params = new URLSearchParams({
-        where: '1=1',
-        outFields: '*',
-        returnGeometry: 'true',
-        outSR: '4326',
-        f: 'geojson',
-        ...extra,
-    });
+    const parts = [
+        'where=1=1',
+        'outFields=*',
+        'returnGeometry=true',
+        'outSR=4326',
+        'f=geojson',
+    ];
+    for (const [k, v] of Object.entries(extra)) {
+        parts.push(`${k}=${v}`);
+    }
     const base = serviceUrl.endsWith('/query') ? serviceUrl : `${serviceUrl.replace(/\/$/, '')}/query`;
-    return `${base}?${params}`;
+    return `${base}?${parts.join('&')}`;
 }
 
-/** Map extent as ArcGIS envelope (xmin,ymin,xmax,ymax). */
+/** Map extent as ArcGIS envelope (xmin,ymin,xmax,ymax), unencoded. */
 export function mapEnvelope(): string | null {
     const map = mapOf();
     if (!map?.getBounds) return null;

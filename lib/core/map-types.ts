@@ -26,6 +26,9 @@ export type LiveWxMap = {
     addControl?: (control: object, position?: string) => void;
     removeControl?: (control: object) => void;
     getContainer?: () => HTMLElement;
+    getCanvas?: () => HTMLCanvasElement;
+    getCanvasContainer?: () => HTMLElement;
+    project?: (lngLat: [number, number] | { lng: number; lat: number }) => { x: number; y: number };
     moveLayer?: (id: string, beforeId?: string) => void;
     hasImage?: (id: string) => boolean;
     addImage?: (

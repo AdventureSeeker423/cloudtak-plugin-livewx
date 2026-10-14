@@ -180,7 +180,7 @@ export async function refreshForecast(): Promise<void> {
     const lat = state.queryLat;
     const lon = state.queryLon;
     if (lat == null || lon == null) {
-        forecast.error = 'No query point yet';
+        forecast.error = 'Select a forecast location';
         return;
     }
     const rLat = roundCoord(lat);
