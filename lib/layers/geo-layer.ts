@@ -38,11 +38,15 @@ export type GeoLayerOpts = {
     fillColor?: string;
     fillOpacity?: number;
     lineColor?: string;
-    circleColor?: string;
+    circleColor?: string | unknown[];
     circleRadius?: number;
     pollMs?: number;
+    /** Re-fetch when the map finishes panning/zooming (extent layers). */
+    refreshOnMove?: boolean;
     /** Preferred property keys for the click-detail title. */
     titleKeys?: string[];
+    /** Custom click-detail HTML builder. */
+    detailHtml?: (props: Record<string, unknown>) => string;
     /** Build the fetch URL (may use map bounds). */
     url: () => string | null;
     /** Transform raw JSON into a FeatureCollection. */
@@ -89,10 +93,20 @@ function asFc(raw: unknown): FeatureCollection {
 
 export function createGeoLayer(opts: GeoLayerOpts): LayerDef {
     let timer: ReturnType<typeof setInterval> | null = null;
+    let moveTimer: ReturnType<typeof setTimeout> | null = null;
+    let moveHandler: (() => void) | null = null;
     let data: FeatureCollection = emptyFc();
     let lastError = '';
     let featureCount = 0;
     let running = false;
+
+    function layerMeta() {
+        return {
+            label: opts.label,
+            titleKeys: opts.titleKeys,
+            detailHtml: opts.detailHtml,
+        };
+    }
 
     async function refresh(): Promise<void> {
         const url = opts.url();
@@ -150,8 +164,33 @@ export function createGeoLayer(opts: GeoLayerOpts): LayerDef {
                     'circle-stroke-color': '#fff',
                 },
             }, before);
+        } else if (opts.circleId && opts.circleColor != null && map.getLayer(opts.circleId)) {
+            map.setPaintProperty?.(opts.circleId, 'circle-color', opts.circleColor);
         }
         opts.paintExtra?.(map);
+    }
+
+    function bindMoveRefresh(): void {
+        if (!opts.refreshOnMove) return;
+        const map = mapOf();
+        if (!map || moveHandler) return;
+        moveHandler = () => {
+            if (moveTimer) clearTimeout(moveTimer);
+            moveTimer = setTimeout(() => { void refresh(); }, 450);
+        };
+        map.on('moveend', moveHandler);
+    }
+
+    function unbindMoveRefresh(): void {
+        if (moveTimer) {
+            clearTimeout(moveTimer);
+            moveTimer = null;
+        }
+        const map = mapOf();
+        if (map && moveHandler) {
+            try { map.off('moveend', moveHandler); } catch { /* ignore */ }
+        }
+        moveHandler = null;
     }
 
     function paintIds(): string[] {
@@ -178,10 +217,8 @@ export function createGeoLayer(opts: GeoLayerOpts): LayerDef {
         keyHtml: opts.keyHtml,
         start: async () => {
             running = true;
-            registerFeatureLayers(paintIds(), {
-                label: opts.label,
-                titleKeys: opts.titleKeys,
-            });
+            registerFeatureLayers(paintIds(), layerMeta());
+            bindMoveRefresh();
             await refresh();
             if (timer) clearInterval(timer);
             timer = setInterval(() => { void refresh(); }, opts.pollMs ?? 300_000);
@@ -192,16 +229,15 @@ export function createGeoLayer(opts: GeoLayerOpts): LayerDef {
                 clearInterval(timer);
                 timer = null;
             }
+            unbindMoveRefresh();
             clear(mapOf());
             data = emptyFc();
             featureCount = 0;
         },
         restore: (map) => {
             if (!running) return;
-            registerFeatureLayers(paintIds(), {
-                label: opts.label,
-                titleKeys: opts.titleKeys,
-            });
+            registerFeatureLayers(paintIds(), layerMeta());
+            bindMoveRefresh();
             paint(map);
         },
         status: () => {

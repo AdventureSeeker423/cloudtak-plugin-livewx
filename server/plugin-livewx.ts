@@ -61,6 +61,7 @@ const PROXY_ALLOW = new Set([
     'geocoding.geo.census.gov',
     'nomads.ncep.noaa.gov',
     'radar.weather.gov',
+    'aviationweather.gov',
 ]);
 
 const MAX_STRIKES = 4000;

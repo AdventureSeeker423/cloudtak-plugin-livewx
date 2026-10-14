@@ -7,6 +7,7 @@ import { mapOf } from '../core/map-host.ts';
 import { state } from '../core/state.ts';
 import { createGeoLayer, arcgisQueryUrl, mapEnvelope } from './geo-layer.ts';
 import { getLayerOpacity, registerLayer } from './registry.ts';
+import { registerMetarLayer } from './metars.ts';
 import {
     arcgisExportTileUrl,
     ensureRasterLayer,
@@ -317,6 +318,8 @@ export function registerCatalogLayers(): void {
         titleKeys: ['mag', 'place', 'title'],
         url: () => 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_week.geojson',
     });
+
+    registerMetarLayer();
 
     registerLayer({
         id: 'radar_sites',

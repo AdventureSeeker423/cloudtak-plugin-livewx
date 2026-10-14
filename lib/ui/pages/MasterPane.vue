@@ -329,6 +329,7 @@ const moreRows = [
     { id: 'fw_zones', label: 'Fire Zones', opacity: false },
     { id: 'smoke', label: 'Smoke', opacity: true },
     { id: 'air_quality', label: 'Air Quality', opacity: false },
+    { id: 'metars', label: 'METARs', opacity: false },
     { id: 'flash_flood', label: 'Flash Flood', opacity: false },
     { id: 'river_gauges', label: 'River Gauges', opacity: false },
     { id: 'buoys', label: 'Buoys', opacity: false },

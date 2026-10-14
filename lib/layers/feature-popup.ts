@@ -17,6 +17,8 @@ type LayerMeta = {
     label: string;
     /** Preferred property keys for the title, in order. */
     titleKeys?: string[];
+    /** Custom detail card; when set, replaces the default property table. */
+    detailHtml?: (props: Record<string, unknown>) => string;
 };
 
 const registry = new Map<string, LayerMeta>();
@@ -112,6 +114,25 @@ function ensurePopupStyle(): void {
 }
 .livewx-alert-dl dd {
     margin: 0;
+    overflow-wrap: anywhere;
+}
+.livewx-metar-raw {
+    margin: 0.85em 0 0;
+    padding-top: 0.7em;
+    border-top: 1px solid ${SURFACE_BORDER};
+}
+.livewx-metar-raw-label {
+    color: var(--tblr-secondary, inherit);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 0.35em;
+}
+.livewx-metar-raw-text {
+    margin: 0;
+    font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
 `;
@@ -328,7 +349,9 @@ function onMapClick(e: {
     if (!meta) return;
     const props = (hit.properties || {}) as Record<string, unknown>;
     // MapLibre may stringify nested props; keep primitives.
-    const html = propertiesHtml(meta.label, props, meta.titleKeys);
+    const html = meta.detailHtml
+        ? meta.detailHtml(props)
+        : propertiesHtml(meta.label, props, meta.titleKeys);
     void showFeatureHtml(map, e.lngLat, html);
 }
 

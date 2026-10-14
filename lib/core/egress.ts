@@ -39,6 +39,7 @@ export const ALLOWED_HOSTS = new Set([
     'spot.weather.gov',
     'gacc.nifc.gov',
     'radar.weather.gov',
+    'aviationweather.gov',
 ]);
 
 /** MapLibre template tokens that must stay literal inside a proxied URL. */
@@ -138,6 +139,23 @@ export async function fetchText(url: string, opts: FetchJsonOpts = {}): Promise<
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.text();
+}
+
+/** Fetch raw bytes (e.g. gzipped AWC cache files) through the same proxy path. */
+export async function fetchBytes(url: string, opts: FetchJsonOpts = {}): Promise<ArrayBuffer> {
+    const target = resolveFetchUrl(url, opts);
+    if (target.includes(PROXY_PATH) && !authToken()) {
+        await refreshAuthToken();
+        if (!authToken()) {
+            throw new Error('Not signed in — CloudTAK token required for weather proxy');
+        }
+    }
+    const res = await doFetch(target, {
+        ...opts,
+        sameOrigin: target.startsWith('/') || Boolean(opts.sameOrigin),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.arrayBuffer();
 }
 
 export function ageLabelMs(at: number | null | undefined): string {
