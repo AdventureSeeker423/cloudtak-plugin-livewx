@@ -77,16 +77,3 @@ export const PAGE_LABELS: Record<AppPageId, string> = {
     storm_reports: 'Storm Reports',
     rain_gauges: 'Rain Gauges',
 };
-
-export const PRIMARY_PAGES: AppPageId[] = [
-    'forecast',
-    'layers',
-    'radar',
-    'spot',
-    'zones',
-    'sawti',
-    'fire_danger',
-    'stations',
-    'gauges',
-    'buoys',
-];

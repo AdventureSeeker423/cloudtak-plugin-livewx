@@ -73,19 +73,14 @@
             >
                 Tap the map to set the forecast / query point.
             </p>
-            <div class='d-flex flex-wrap gap-1 mb-2'>
-                <button
-                    v-for='p in primaryPages'
-                    :key='p'
-                    class='btn btn-sm'
-                    :class='state.page === p ? "btn-primary" : "btn-outline-secondary"'
-                    type='button'
-                    @click='setPage(p)'
-                >
-                    {{ pageLabels[p] }}
-                </button>
-            </div>
+            <label
+                class='form-label small mb-1'
+                for='livewx-page'
+            >
+                Page
+            </label>
             <select
+                id='livewx-page'
                 class='form-select form-select-sm mb-2'
                 :value='state.page'
                 @change='onPageSelect'
@@ -126,7 +121,7 @@
 
 <script setup lang='ts'>
 import type { PluginAPI } from '@tak-ps/cloudtak';
-import { PAGE_LABELS, PRIMARY_PAGES, type AppPageId } from '../core/constants.ts';
+import { PAGE_LABELS, type AppPageId } from '../core/constants.ts';
 import { refreshQueryPoint } from '../core/point.ts';
 import {
     addFavorite,
@@ -154,7 +149,6 @@ import ZonesPage from './pages/ZonesPage.vue';
 
 defineProps<{ api: PluginAPI }>();
 
-const primaryPages = PRIMARY_PAGES;
 const pageLabels = PAGE_LABELS;
 
 async function afterPointChange(): Promise<void> {

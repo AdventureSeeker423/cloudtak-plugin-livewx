@@ -61,6 +61,15 @@ cd cloudtak-plugin-livewx
 
 Copies into `app/plugins/livewx-radar/` and `api/stateless/routes/plugin-livewx.ts`, then rebuilds the API image. Afterward: **Settings → Refresh App**.
 
+If the whole CloudTAK UI starts returning **502** (basemap, Atlas sync, other plugins), the API container failed to boot — often from a bad `api/stateless/routes/plugin-livewx.ts`. Remove that file, rebuild/restart the API, then reinstall with a fixed copy:
+
+```bash
+rm -f "$CLOUDTAK/api/stateless/routes/plugin-livewx.ts"
+cd "$CLOUDTAK" && docker compose build --no-cache api && docker compose up -d --force-recreate api
+# then from this repo:
+./install.sh --no-pull
+```
+
 ```bash
 ./install.sh --remove
 ```

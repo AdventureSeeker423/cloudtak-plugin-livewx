@@ -5,15 +5,24 @@
  *  - Optional allowlisted HTTPS proxy for CORS-blocked weather hosts
  *
  * Copy to CloudTAK api/stateless/routes/ via install.sh.
+ *
+ * Export signature must match other plugin routes (e.g. plugin-qpd.ts):
+ *   export default async function router(schema, config)
  */
 import { Type } from '@sinclair/typebox';
 import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
 import Auth from '../../common/auth.js';
 import type ConfigStateless from '../config.js';
-import WebSocket from 'ws';
 
 type Strike = { lat: number; lon: number; timeMs: number };
+
+type WsLike = {
+    readyState: number;
+    send: (data: string) => void;
+    close: () => void;
+    on: (event: string, cb: (...args: unknown[]) => void) => void;
+};
 
 const WS_SERVERS = [
     'wss://ws1.blitzortung.org',
@@ -53,13 +62,16 @@ const PROXY_ALLOW = new Set([
 
 const MAX_STRIKES = 4000;
 const STALE_MS = 10 * 60_000;
+const WS_CLOSED = 3;
 
 let strikes: Strike[] = [];
-let upstream: WebSocket | null = null;
+let upstream: WsLike | null = null;
 let upstreamIdx = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let pruneTimer: ReturnType<typeof setInterval> | null = null;
 let connected = false;
+let wsCtor: (new (url: string) => WsLike) | null | undefined;
+let wsLoadAttempted = false;
 
 function lzwDecode(input: string): string {
     const dict: Record<number, string> = {};
@@ -87,15 +99,40 @@ function prune(): void {
     strikes = strikes.filter((s) => s.timeMs >= cutoff);
 }
 
+async function loadWsCtor(): Promise<(new (url: string) => WsLike) | null> {
+    if (wsLoadAttempted) return wsCtor ?? null;
+    wsLoadAttempted = true;
+    // Prefer Node built-in WebSocket (Node 22+) so we do not hard-depend on `ws`.
+    const g = globalThis as { WebSocket?: new (url: string) => WsLike };
+    if (typeof g.WebSocket === 'function') {
+        wsCtor = g.WebSocket;
+        return wsCtor;
+    }
+    try {
+        const mod = await import('ws');
+        wsCtor = (mod.default || mod) as new (url: string) => WsLike;
+        return wsCtor;
+    } catch (err) {
+        console.error('[livewx] WebSocket client unavailable — lightning relay disabled', err);
+        wsCtor = null;
+        return null;
+    }
+}
+
 function scheduleReconnect(): void {
     if (reconnectTimer) return;
     reconnectTimer = setTimeout(() => {
         reconnectTimer = null;
-        connectUpstream();
+        void connectUpstream();
     }, 4000);
 }
 
-function connectUpstream(): void {
+async function connectUpstream(): Promise<void> {
+    const Ctor = await loadWsCtor();
+    if (!Ctor) {
+        connected = false;
+        return;
+    }
     if (upstream) {
         try { upstream.close(); } catch { /* ignore */ }
         upstream = null;
@@ -103,19 +140,32 @@ function connectUpstream(): void {
     const url = WS_SERVERS[upstreamIdx % WS_SERVERS.length];
     upstreamIdx++;
     try {
-        upstream = new WebSocket(url);
-    } catch {
+        upstream = new Ctor(url);
+    } catch (err) {
+        console.error('[livewx] upstream connect failed', err);
         connected = false;
         scheduleReconnect();
         return;
     }
-    upstream.on('open', () => {
+
+    // Support both EventTarget (built-in) and EventEmitter (`ws`) styles.
+    const sock = upstream as WsLike & {
+        addEventListener?: (event: string, cb: (...args: unknown[]) => void) => void;
+    };
+
+    const onOpen = () => {
         connected = true;
         try { upstream?.send(JSON.stringify({ a: 111 })); } catch { /* ignore */ }
-    });
-    upstream.on('message', (data) => {
+    };
+    const onMessage = (...args: unknown[]) => {
         try {
-            const decoded = lzwDecode(String(data));
+            const data = args[0];
+            const raw = typeof data === 'string'
+                ? data
+                : (data && typeof data === 'object' && 'data' in (data as object)
+                    ? String((data as { data: unknown }).data)
+                    : String(data));
+            const decoded = lzwDecode(raw);
             const rec = JSON.parse(decoded) as { lat?: number; lon?: number; time?: number };
             if (typeof rec.lat !== 'number' || typeof rec.lon !== 'number') return;
             strikes.push({
@@ -127,31 +177,41 @@ function connectUpstream(): void {
         } catch {
             /* ignore */
         }
-    });
-    upstream.on('close', () => {
+    };
+    const onClose = () => {
         connected = false;
         scheduleReconnect();
-    });
-    upstream.on('error', () => {
+    };
+    const onError = () => {
         connected = false;
         try { upstream?.close(); } catch { /* ignore */ }
-    });
+    };
+
+    if (typeof sock.on === 'function') {
+        sock.on('open', onOpen);
+        sock.on('message', onMessage);
+        sock.on('close', onClose);
+        sock.on('error', onError);
+    } else if (typeof sock.addEventListener === 'function') {
+        sock.addEventListener('open', onOpen);
+        sock.addEventListener('message', onMessage);
+        sock.addEventListener('close', onClose);
+        sock.addEventListener('error', onError);
+    }
 }
 
-function ensureUpstream(): void {
+async function ensureUpstream(): Promise<void> {
     if (!pruneTimer) {
         pruneTimer = setInterval(prune, 5000);
     }
-    if (!upstream || upstream.readyState === WebSocket.CLOSED) {
-        connectUpstream();
+    if (!upstream || upstream.readyState === WS_CLOSED) {
+        await connectUpstream();
     }
 }
 
-export default async function schema(config: ConfigStateless): Promise<Schema> {
-    void config;
-    ensureUpstream();
-
-    const schema = new Schema();
+export default async function router(schema: Schema, config: ConfigStateless) {
+    // Do NOT connect upstream at boot — lazy on first lightning request.
+    // A bad import/connect must never prevent the API from starting.
 
     await schema.get('/livewx/lightning', {
         name: 'LiveWX Lightning Relay',
@@ -171,17 +231,21 @@ export default async function schema(config: ConfigStateless): Promise<Schema> {
             })),
         }),
     }, async (req, res) => {
-        await Auth.is_auth(config, req);
-        ensureUpstream();
-        prune();
-        const since = Number(req.query.since) || 0;
-        const out = strikes.filter((s) => s.timeMs > since);
-        res.json({
-            connected,
-            attribution: 'Lightning data © Blitzortung.org & contributors (CC BY-SA 4.0)',
-            disclaimer: 'Entertainment / situational awareness only — not for life safety or official warning.',
-            strikes: out.slice(-1000),
-        });
+        try {
+            await Auth.as_user(config, req);
+            await ensureUpstream();
+            prune();
+            const since = Number(req.query.since) || 0;
+            const out = strikes.filter((s) => s.timeMs > since);
+            res.json({
+                connected,
+                attribution: 'Lightning data © Blitzortung.org & contributors (CC BY-SA 4.0)',
+                disclaimer: 'Entertainment / situational awareness only — not for life safety or official warning.',
+                strikes: out.slice(-1000),
+            });
+        } catch (err) {
+            Err.respond(err, res);
+        }
     });
 
     await schema.get('/livewx/proxy', {
@@ -192,28 +256,30 @@ export default async function schema(config: ConfigStateless): Promise<Schema> {
             url: Type.String(),
         }),
     }, async (req, res) => {
-        await Auth.is_auth(config, req);
-        let target: URL;
         try {
-            target = new URL(String(req.query.url));
-        } catch {
-            throw new Err(400, null, 'Invalid url');
+            await Auth.as_user(config, req);
+            let target: URL;
+            try {
+                target = new URL(String(req.query.url));
+            } catch {
+                throw new Err(400, null, 'Invalid url');
+            }
+            if (target.protocol !== 'https:' || !PROXY_ALLOW.has(target.hostname)) {
+                throw new Err(403, null, 'Host not allowlisted');
+            }
+            const upstreamRes = await fetch(target.toString(), {
+                headers: {
+                    Accept: 'application/geo+json, application/json, image/*, */*',
+                    'User-Agent': 'CloudTAK-LiveWX-Relay/2.0',
+                },
+            });
+            const ct = upstreamRes.headers.get('content-type') || 'application/octet-stream';
+            res.header('Content-Type', ct);
+            res.status(upstreamRes.status);
+            const buf = Buffer.from(await upstreamRes.arrayBuffer());
+            res.send(buf);
+        } catch (err) {
+            Err.respond(err, res);
         }
-        if (target.protocol !== 'https:' || !PROXY_ALLOW.has(target.hostname)) {
-            throw new Err(403, null, 'Host not allowlisted');
-        }
-        const upstreamRes = await fetch(target.toString(), {
-            headers: {
-                Accept: 'application/geo+json, application/json, image/*, */*',
-                'User-Agent': 'CloudTAK-LiveWX-Relay/2.0',
-            },
-        });
-        const ct = upstreamRes.headers.get('content-type') || 'application/octet-stream';
-        res.header('Content-Type', ct);
-        res.status(upstreamRes.status);
-        const buf = Buffer.from(await upstreamRes.arrayBuffer());
-        res.send(buf);
     });
-
-    return schema;
 }
