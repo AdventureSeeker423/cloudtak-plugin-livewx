@@ -1,5 +1,6 @@
 /**
  * Wind U/V grid over the map view via Open-Meteo (JSON stand-in for Atmosphere's NOMADS GRIB).
+ * Kept small (≤20 points) so the free Open-Meteo API does not 429.
  */
 import { fetchJson } from '../core/egress.ts';
 import { mapOf } from '../core/map-host.ts';
@@ -26,8 +27,10 @@ type OmPoint = {
         wind_speed_10m?: number;
         wind_direction_10m?: number;
     };
-    current_units?: { wind_speed_10m?: string };
 };
+
+/** Hard cap — Open-Meteo free tier 429s large multi-location current queries. */
+const MAX_POINTS = 20;
 
 /** Meteorological "from" degrees → eastward (u) / northward (v) m/s. */
 export function uvFromSpeedDir(speedMs: number, fromDeg: number): { u: number; v: number } {
@@ -70,9 +73,9 @@ function viewBounds(): { west: number; east: number; south: number; north: numbe
     let south = b.getSouth();
     let north = b.getNorth();
     if (!(east > west) || !(north > south)) return null;
-    // Pad ~25% so particles near the edge still have vectors.
-    const padLon = (east - west) * 0.25;
-    const padLat = (north - south) * 0.25;
+    // Modest pad — large pads explode the sample mesh on CONUS views.
+    const padLon = Math.min(4, (east - west) * 0.12);
+    const padLat = Math.min(3, (north - south) * 0.12);
     west = Math.max(-180, west - padLon);
     east = Math.min(180, east + padLon);
     south = Math.max(-85, south - padLat);
@@ -80,23 +83,23 @@ function viewBounds(): { west: number; east: number; south: number; north: numbe
     return { west, east, south, north };
 }
 
-/** Build a regular lon/lat sample mesh capped for Open-Meteo multi-location limits. */
+/** Build a coarse lon/lat mesh (max ~20 points). */
 export function buildMesh(
     west: number,
     south: number,
     east: number,
     north: number,
-    maxPoints = 120,
+    maxPoints = MAX_POINTS,
 ): { lats: number[]; lons: number[]; nx: number; ny: number } {
     const spanLon = Math.max(0.05, east - west);
     const spanLat = Math.max(0.05, north - south);
     let nx = Math.round(Math.sqrt(maxPoints * (spanLon / spanLat)));
     let ny = Math.round(maxPoints / Math.max(1, nx));
-    nx = Math.max(4, Math.min(16, nx));
-    ny = Math.max(4, Math.min(16, ny));
-    while (nx * ny > maxPoints && (nx > 4 || ny > 4)) {
-        if (nx >= ny && nx > 4) nx--;
-        else if (ny > 4) ny--;
+    nx = Math.max(3, Math.min(5, nx));
+    ny = Math.max(3, Math.min(4, ny));
+    while (nx * ny > maxPoints && (nx > 3 || ny > 3)) {
+        if (nx >= ny && nx > 3) nx--;
+        else if (ny > 3) ny--;
         else break;
     }
     const lats: number[] = [];
@@ -105,11 +108,20 @@ export function buildMesh(
         const lat = south + ((north - south) * j) / Math.max(1, ny - 1);
         for (let i = 0; i < nx; i++) {
             const lon = west + ((east - west) * i) / Math.max(1, nx - 1);
-            lats.push(Math.round(lat * 1000) / 1000);
-            lons.push(Math.round(lon * 1000) / 1000);
+            lats.push(Math.round(lat * 100) / 100);
+            lons.push(Math.round(lon * 100) / 100);
         }
     }
     return { lats, lons, nx, ny };
+}
+
+export function boundsKey(b: { west: number; east: number; south: number; north: number }): string {
+    return [
+        b.west.toFixed(2),
+        b.south.toFixed(2),
+        b.east.toFixed(2),
+        b.north.toFixed(2),
+    ].join('|');
 }
 
 export async function fetchWindGrid(signal?: AbortSignal): Promise<WindGrid | null> {
@@ -117,16 +129,18 @@ export async function fetchWindGrid(signal?: AbortSignal): Promise<WindGrid | nu
     if (!bounds) return null;
     const { west, east, south, north } = bounds;
     const mesh = buildMesh(west, south, east, north);
+    // forecast_days=1 keeps request weight low on the free tier.
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${mesh.lats.join(',')}`
         + `&longitude=${mesh.lons.join(',')}`
         + '&current=wind_speed_10m,wind_direction_10m'
-        + '&wind_speed_unit=ms&cell_selection=nearest&timezone=UTC';
+        + '&wind_speed_unit=ms&cell_selection=nearest&timezone=UTC&forecast_days=1';
     const body = await fetchJson<OmPoint | OmPoint[]>(url, { signal });
     const rows = Array.isArray(body) ? body : [body];
     const u = new Float32Array(mesh.nx * mesh.ny);
     const v = new Float32Array(mesh.nx * mesh.ny);
     u.fill(NaN);
     v.fill(NaN);
+    let filled = 0;
     for (let i = 0; i < rows.length && i < u.length; i++) {
         const cur = rows[i]?.current;
         const spd = cur?.wind_speed_10m;
@@ -135,9 +149,9 @@ export async function fetchWindGrid(signal?: AbortSignal): Promise<WindGrid | nu
         const uv = uvFromSpeedDir(spd, dir);
         u[i] = uv.u;
         v[i] = uv.v;
+        filled++;
     }
-    const model = (rows[0] as { model?: string } | undefined)?.model
-        || 'Open-Meteo';
+    if (!filled) throw new Error('No wind samples in view');
     return {
         west,
         east,
@@ -148,6 +162,6 @@ export async function fetchWindGrid(signal?: AbortSignal): Promise<WindGrid | nu
         u,
         v,
         fetchedAt: Date.now(),
-        model: typeof model === 'string' ? model : 'Open-Meteo',
+        model: 'Open-Meteo',
     };
 }

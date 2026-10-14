@@ -265,17 +265,20 @@ export default async function router(schema: Schema, config: ConfigStateless) {
     }, async (req, res) => {
         try {
             await Auth.as_user(config, req, { token: true });
-            let target: URL;
+            const raw = String(req.query.url || '');
+            let host: string;
             try {
-                target = new URL(String(req.query.url));
+                host = new URL(raw.split('?')[0]).hostname;
             } catch {
                 throw new Err(400, null, 'Invalid url');
             }
-            if (target.protocol !== 'https:' || !PROXY_ALLOW.has(target.hostname)) {
+            if (!raw.startsWith('https:') || !PROXY_ALLOW.has(host)) {
                 throw new Err(403, null, 'Host not allowlisted');
             }
-            // target.href re-serializes query values (needed for ArcGIS renderingRule JSON).
-            const upstreamRes = await fetch(target.href, {
+            // Re-encode query values. Express decodes the url= param, which turns
+            // ArcGIS renderingRule JSON into bare {"} and upstream then 400s.
+            const upstreamHref = encodeUpstreamUrl(raw);
+            const upstreamRes = await fetch(upstreamHref, {
                 headers: {
                     Accept: 'application/geo+json, application/json, image/*, */*',
                     'User-Agent': 'CloudTAK-LiveWX-Relay/2.0',
@@ -285,7 +288,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             const buf = Buffer.from(await upstreamRes.arrayBuffer());
             // MapLibre raster tiles must be real images — WMS often returns XML
             // ServiceExceptions with HTTP 200; ArcGIS may return HTML error pages.
-            const wantsImage = /(?:GetMap|exportImage|\/export\b|format=png)/i.test(target.toString());
+            const wantsImage = /(?:GetMap|exportImage|\/export\b|format=png)/i.test(upstreamHref);
             const looksPng = buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
             const looksGif = buf.length >= 3 && buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46;
             const looksJpeg = buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xd8;
@@ -301,4 +304,25 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             Err.respond(err, res);
         }
     });
+}
+
+/** Rebuild an absolute HTTPS URL with properly encoded query values. */
+function encodeUpstreamUrl(raw: string): string {
+    const q = raw.indexOf('?');
+    if (q < 0) return raw;
+    const base = raw.slice(0, q);
+    const query = raw.slice(q + 1);
+    const parts = [];
+    for (const part of query.split('&')) {
+        if (!part) continue;
+        const eq = part.indexOf('=');
+        if (eq < 0) {
+            parts.push(encodeURIComponent(part));
+            continue;
+        }
+        const key = part.slice(0, eq);
+        const val = part.slice(eq + 1);
+        parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(val)}`);
+    }
+    return `${base}?${parts.join('&')}`;
 }

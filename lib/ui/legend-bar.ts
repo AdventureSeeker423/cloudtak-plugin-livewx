@@ -1,0 +1,393 @@
+/**
+ * Bottom-center stacked legend strips for enabled color-mapped layers.
+ */
+import { watch, type WatchStopHandle } from 'vue';
+import type { LiveWxMap } from '../core/map-types.ts';
+import { mapOf, registerModule } from '../core/map-host.ts';
+import { state } from '../core/state.ts';
+import { SURFACE_BG, SURFACE_BORDER, SURFACE_FG, syncSidebarTheme } from '../core/theme.ts';
+import type { UnitSystem } from '../core/units.ts';
+import { getProduct } from '../radar/products.ts';
+
+type LabelFn = string | ((units: UnitSystem) => string);
+
+export type LegendStrip = {
+    id: string;
+    label: LabelFn;
+    unit?: LabelFn;
+    /** CSS colors left → right for the gradient strip. */
+    colors: string[];
+    min: LabelFn;
+    max: LabelFn;
+    mid?: LabelFn;
+};
+
+/** Menu order from MasterPane (only ids with a legend appear). */
+const MENU_ORDER = [
+    'radar_overlay',
+    'satellite',
+    'rain_forecast',
+    'rain_12h',
+    'rain_totals',
+    'wind_field',
+    'surface_wind',
+    'fire_outlook',
+    'smoke',
+    'air_quality',
+    'flash_flood',
+    'snow_depth',
+] as const;
+
+const RAIN_COLORS = [
+    '#0018ff', '#00a0ff', '#00ffc8', '#00e000', '#ffff00', '#ff9000', '#ff0000', '#ff00ff', '#ffffff',
+];
+
+const LEGENDS: Record<string, LegendStrip> = {
+    radar_overlay: {
+        id: 'radar_overlay',
+        label: 'NEXRAD Radar',
+        unit: 'dBZ',
+        colors: [
+            '#00ecec', '#01a0f6', '#0000f6', '#00ff00', '#00c800', '#009000',
+            '#ffff00', '#e7c000', '#ff9000', '#ff0000', '#d60000', '#c00000',
+            '#ff00ff', '#9955c9', '#ffffff',
+        ],
+        min: '5',
+        mid: '40',
+        max: '75',
+    },
+    radar_velocity: {
+        id: 'radar_velocity',
+        label: 'NEXRAD Radar',
+        unit: 'kt',
+        colors: [
+            '#02c802', '#008c00', '#015a01', '#969696', '#fdb4b4', '#fd6464', '#fd0000', '#780000',
+        ],
+        min: '−50',
+        mid: '0',
+        max: '+50',
+    },
+    satellite: {
+        id: 'satellite',
+        label: 'Infrared Cloud Tops',
+        unit: '°C',
+        colors: [
+            '#202020', '#505050', '#808080', '#b0b0b0', '#e0e0e0',
+            '#ffff80', '#ff8000', '#ff0000', '#8000ff', '#ffffff',
+        ],
+        min: 'warm',
+        max: 'cold',
+    },
+    rain_forecast: {
+        id: 'rain_forecast',
+        label: 'Rain Forecast',
+        unit: (u) => (u === 'us' ? 'in' : 'mm'),
+        colors: RAIN_COLORS,
+        min: (u) => (u === 'us' ? '0.01' : '0.2'),
+        mid: (u) => (u === 'us' ? '0.5' : '12'),
+        max: (u) => (u === 'us' ? '2+' : '50+'),
+    },
+    rain_12h: {
+        id: 'rain_12h',
+        label: 'Rain (12 Hours)',
+        unit: (u) => (u === 'us' ? 'in' : 'mm'),
+        colors: RAIN_COLORS,
+        min: (u) => (u === 'us' ? '0.01' : '0.2'),
+        mid: (u) => (u === 'us' ? '1' : '25'),
+        max: (u) => (u === 'us' ? '5+' : '125+'),
+    },
+    rain_totals: {
+        id: 'rain_totals',
+        label: 'Rain (24 Hours)',
+        unit: (u) => (u === 'us' ? 'in' : 'mm'),
+        colors: RAIN_COLORS,
+        min: (u) => (u === 'us' ? '0.01' : '0.2'),
+        mid: (u) => (u === 'us' ? '1' : '25'),
+        max: (u) => (u === 'us' ? '5+' : '125+'),
+    },
+    wind_field: {
+        id: 'wind_field',
+        label: 'Water Vapor',
+        colors: [
+            '#1a0033', '#003366', '#0066aa', '#00aa88', '#88cc44', '#ffee66', '#ffffff',
+        ],
+        min: 'dry',
+        max: 'moist',
+    },
+    surface_wind: {
+        id: 'surface_wind',
+        label: 'Surface Wind',
+        unit: (u) => (u === 'metric' ? 'm/s' : u === 'aviation' ? 'kt' : 'mph'),
+        colors: [
+            '#b8dcff', '#58b4ff', '#58e890', '#ffe850', '#ff9a30', '#ff4040',
+        ],
+        min: '0',
+        mid: (u) => (u === 'metric' ? '12' : u === 'aviation' ? '25' : '25'),
+        max: (u) => (u === 'metric' ? '18+' : u === 'aviation' ? '40+' : '40+'),
+    },
+    fire_outlook: {
+        id: 'fire_outlook',
+        label: 'Fire Outlook',
+        colors: ['#ffff00', '#ff9900', '#ff0000', '#ff00ff'],
+        min: 'Elevated',
+        mid: 'Critical',
+        max: 'Extreme',
+    },
+    smoke: {
+        id: 'smoke',
+        label: 'Smoke',
+        unit: 'µg/m³',
+        colors: [
+            '#f5f5dc', '#d2b48c', '#a0522d', '#69401a', '#3d2410', '#1a0f08',
+        ],
+        min: 'light',
+        max: 'dense',
+    },
+    air_quality: {
+        id: 'air_quality',
+        label: 'Air Quality',
+        unit: 'AQI',
+        colors: [
+            '#00e400', '#ffff00', '#ff7e00', '#ff0000', '#8f3f97', '#7e0023',
+        ],
+        min: 'Good',
+        mid: 'Unhealthy',
+        max: 'Hazardous',
+    },
+    flash_flood: {
+        id: 'flash_flood',
+        label: 'Flash Flood',
+        colors: ['#2f9e44', '#ffff00', '#ff9900', '#ff0000'],
+        min: 'Slight',
+        mid: 'Moderate',
+        max: 'High',
+    },
+    snow_depth: {
+        id: 'snow_depth',
+        label: 'Snow Depth',
+        unit: (u) => (u === 'us' ? 'in' : 'cm'),
+        colors: [
+            '#e8f4ff', '#a8d4ff', '#5aa8ff', '#2060c8', '#102060', '#ffffff',
+        ],
+        min: (u) => (u === 'us' ? '0.1' : '0.5'),
+        mid: (u) => (u === 'us' ? '12' : '30'),
+        max: (u) => (u === 'us' ? '36+' : '90+'),
+    },
+};
+
+const STYLE_ID = 'livewx-legend-bar-style';
+
+let mapRef: LiveWxMap | null = null;
+let root: HTMLDivElement | null = null;
+let stopWatch: WatchStopHandle | null = null;
+
+function resolve(v: LabelFn | undefined, units: UnitSystem): string {
+    if (v == null) return '';
+    return typeof v === 'function' ? v(units) : v;
+}
+
+function layerOn(id: string): boolean {
+    if (id === 'radar_overlay') {
+        return state.overlayEnabled || Boolean(state.layers.radar_overlay?.enabled);
+    }
+    return Boolean(state.layers[id]?.enabled);
+}
+
+function activeStrips(): LegendStrip[] {
+    const out: LegendStrip[] = [];
+    for (const id of MENU_ORDER) {
+        if (!layerOn(id)) continue;
+        if (id === 'radar_overlay') {
+            const prod = getProduct(state.productId);
+            out.push(prod?.filterKind === 'velocity' ? LEGENDS.radar_velocity : LEGENDS.radar_overlay);
+            continue;
+        }
+        const strip = LEGENDS[id];
+        if (strip) out.push(strip);
+    }
+    return out;
+}
+
+function ensureStyle(): void {
+    if (document.getElementById(STYLE_ID)) return;
+    const style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = `
+.livewx-legend-bar {
+    position: absolute;
+    left: 50%;
+    bottom: 12px;
+    transform: translateX(-50%);
+    z-index: 12;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: stretch;
+    width: min(420px, calc(100% - 140px));
+    pointer-events: none;
+    user-select: none;
+}
+.livewx-legend-bar[hidden] {
+    display: none !important;
+}
+.livewx-legend-strip {
+    padding: 6px 10px 7px;
+    border-radius: 6px;
+    color: ${SURFACE_FG};
+    background: ${SURFACE_BG};
+    border: 1px solid ${SURFACE_BORDER};
+    box-shadow: var(--tblr-box-shadow, 0 1px 4px rgba(0, 0, 0, 0.25));
+    font: 11px/1.25 var(--tblr-font-sans-serif, system-ui, Segoe UI, sans-serif);
+}
+.livewx-legend-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+.livewx-legend-unit {
+    font-weight: 500;
+    opacity: 0.75;
+}
+.livewx-legend-ramp {
+    height: 10px;
+    border-radius: 2px;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+}
+.livewx-legend-ticks {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 3px;
+    opacity: 0.8;
+    font-size: 10px;
+}
+`;
+    document.head.appendChild(style);
+}
+
+function paint(): void {
+    if (!root) return;
+    const strips = activeStrips();
+    if (!strips.length) {
+        root.hidden = true;
+        root.replaceChildren();
+        return;
+    }
+    root.hidden = false;
+    const units = state.units;
+    const frag = document.createDocumentFragment();
+    for (const strip of strips) {
+        const card = document.createElement('div');
+        card.className = 'livewx-legend-strip';
+        card.dataset.layer = strip.id;
+
+        const head = document.createElement('div');
+        head.className = 'livewx-legend-head';
+        const title = document.createElement('span');
+        title.textContent = resolve(strip.label, units);
+        head.appendChild(title);
+        const unit = resolve(strip.unit, units);
+        if (unit) {
+            const u = document.createElement('span');
+            u.className = 'livewx-legend-unit';
+            u.textContent = unit;
+            head.appendChild(u);
+        }
+        card.appendChild(head);
+
+        const ramp = document.createElement('div');
+        ramp.className = 'livewx-legend-ramp';
+        ramp.style.background = `linear-gradient(90deg, ${strip.colors.join(', ')})`;
+        card.appendChild(ramp);
+
+        const ticks = document.createElement('div');
+        ticks.className = 'livewx-legend-ticks';
+        const min = document.createElement('span');
+        min.textContent = resolve(strip.min, units);
+        ticks.appendChild(min);
+        const mid = resolve(strip.mid, units);
+        if (mid) {
+            const m = document.createElement('span');
+            m.textContent = mid;
+            ticks.appendChild(m);
+        }
+        const max = document.createElement('span');
+        max.textContent = resolve(strip.max, units);
+        ticks.appendChild(max);
+        card.appendChild(ticks);
+
+        frag.appendChild(card);
+    }
+    root.replaceChildren(frag);
+}
+
+function ensureRoot(map: LiveWxMap): void {
+    if (root?.parentElement) return;
+    const host = map.getContainer?.();
+    if (!host) return;
+    ensureStyle();
+    root = document.createElement('div');
+    root.className = 'livewx-legend-bar';
+    root.setAttribute('aria-label', 'Layer legends');
+    host.appendChild(root);
+}
+
+let moduleRegistered = false;
+
+export function attachLegendBar(map?: LiveWxMap | null): void {
+    const m = map ?? mapOf();
+    if (!m) return;
+    if (mapRef === m && root?.parentElement) {
+        paint();
+        return;
+    }
+    detachLegendBar();
+    mapRef = m;
+    ensureRoot(m);
+    paint();
+    if (!stopWatch) {
+        stopWatch = watch(
+            () => [
+                state.overlayEnabled,
+                state.productId,
+                state.units,
+                state.layers,
+            ],
+            () => paint(),
+            { deep: true },
+        );
+    }
+    if (!moduleRegistered) {
+        registerModule({
+            id: 'legend-bar',
+            restore: (map) => {
+                mapRef = map;
+                ensureRoot(map);
+                paint();
+            },
+            destroy: () => detachLegendBar(),
+        });
+        moduleRegistered = true;
+    }
+    syncSidebarTheme();
+}
+
+export function detachLegendBar(): void {
+    stopWatch?.();
+    stopWatch = null;
+    root?.remove();
+    root = null;
+    mapRef = null;
+    moduleRegistered = false;
+}
+
+export function refreshLegendBar(): void {
+    if (!mapRef) {
+        attachLegendBar();
+        return;
+    }
+    ensureRoot(mapRef);
+    paint();
+}

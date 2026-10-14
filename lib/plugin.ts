@@ -14,6 +14,7 @@ import { registerHurricaneLayer } from './layers/hurricanes.ts';
 import { startEnabledLayers, stopAllLayers } from './layers/registry.ts';
 import { registerDensityLayer, applyDensityFromState } from './lightning/density.ts';
 import { destroy as destroyRadar, init as initRadar } from './radar/radar.ts';
+import { attachLegendBar, detachLegendBar } from './ui/legend-bar.ts';
 import { registerWindLayer } from './wind/particles.ts';
 
 let wired = false;
@@ -58,6 +59,7 @@ export async function init(api: PluginAPI): Promise<void> {
     await initRadar(api);
     applyDensityFromState();
     await startEnabledLayers();
+    attachLegendBar();
     await refreshQueryPoint();
     void refreshForecast();
     if (forecastTimer) clearInterval(forecastTimer);
@@ -75,6 +77,7 @@ export function destroy(): void {
         forecastTimer = null;
     }
     stopAllLayers();
+    detachLegendBar();
     destroyPointController();
     destroyRadar();
     destroyMapHost();

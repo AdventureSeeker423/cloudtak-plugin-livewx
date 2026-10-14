@@ -43,7 +43,7 @@
                         type='button'
                         @click='go("radar")'
                     >
-                        Settings
+                        Details
                     </button>
                 </div>
                 <div
@@ -250,52 +250,46 @@
         </section>
 
         <section class='sec'>
-            <button
-                class='btn btn-sm btn-link px-0 sec-title text-decoration-none'
-                type='button'
-                @click='moreOpen = !moreOpen'
+            <h3 class='sec-title mb-2'>
+                More
+            </h3>
+            <div
+                v-for='row in moreRows'
+                :key='row.id'
+                class='layer-row mb-2'
             >
-                More {{ moreOpen ? '▾' : '▸' }}
-            </button>
-            <div v-if='moreOpen'>
-                <div
-                    v-for='row in moreRows'
-                    :key='row.id'
-                    class='layer-row mb-2'
-                >
-                    <div class='form-check form-switch mb-0'>
-                        <input
-                            :id='`m-${row.id}`'
-                            class='form-check-input'
-                            type='checkbox'
-                            :checked='enabled[row.id]'
-                            :disabled='Boolean(layerUi.busy[row.id])'
-                            @change='toggle(row.id, $event)'
-                        >
-                        <label
-                            class='form-check-label'
-                            :for='`m-${row.id}`'
-                        >{{ row.label }}</label>
-                    </div>
+                <div class='form-check form-switch mb-0'>
+                    <input
+                        :id='`m-${row.id}`'
+                        class='form-check-input'
+                        type='checkbox'
+                        :checked='enabled[row.id]'
+                        :disabled='Boolean(layerUi.busy[row.id])'
+                        @change='toggle(row.id, $event)'
+                    >
+                    <label
+                        class='form-check-label'
+                        :for='`m-${row.id}`'
+                    >{{ row.label }}</label>
+                </div>
                 <div
                     v-if='enabled[row.id] && row.opacity'
                     class='opacity-row'
                 >
-                        <label
-                            class='form-label small mb-1'
-                            :for='`m-op-${row.id}`'
-                        >Opacity {{ pct(row.id) }}%</label>
-                        <input
-                            :id='`m-op-${row.id}`'
-                            class='form-range mb-0'
-                            type='range'
-                            min='0'
-                            max='100'
-                            step='1'
-                            :value='pct(row.id)'
-                            @input='onOpacity(row.id, $event)'
-                        >
-                    </div>
+                    <label
+                        class='form-label small mb-1'
+                        :for='`m-op-${row.id}`'
+                    >Opacity {{ pct(row.id) }}%</label>
+                    <input
+                        :id='`m-op-${row.id}`'
+                        class='form-range mb-0'
+                        type='range'
+                        min='0'
+                        max='100'
+                        step='1'
+                        :value='pct(row.id)'
+                        @input='onOpacity(row.id, $event)'
+                    >
                 </div>
             </div>
         </section>
@@ -303,7 +297,7 @@
 </template>
 
 <script setup lang='ts'>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted } from 'vue';
 import { setLightningStaleSec, setPage, state } from '../../core/state.ts';
 import { forecast } from '../../forecast/engine.ts';
 import { listSources } from '../../forecast/sources.ts';
@@ -315,13 +309,14 @@ import {
     setLayerOpacity,
 } from '../../layers/registry.ts';
 
-const moreOpen = ref(false);
+/** Only one rain accumulation layer at a time. */
+const RAIN_LAYER_IDS = ['rain_forecast', 'rain_12h', 'rain_totals'] as const;
 
 const radarRows = [
-    { id: 'satellite', label: 'GOES Infrared' },
-    { id: 'rain_forecast', label: 'MRMS Rain (1h)' },
-    { id: 'rain_12h', label: 'MRMS Rain (12h)' },
-    { id: 'rain_totals', label: 'MRMS Rain (24h)' },
+    { id: 'satellite', label: 'Infrared Cloud Tops' },
+    { id: 'rain_forecast', label: 'Rain Forecast' },
+    { id: 'rain_12h', label: 'Rain (12 Hours)' },
+    { id: 'rain_totals', label: 'Rain (24 Hours)' },
     { id: 'wind_field', label: 'Water Vapor' },
 ];
 
@@ -392,8 +387,17 @@ function pct(id: string): number {
     return Math.round((opacities.value[id] ?? 0.7) * 100);
 }
 
-function toggle(id: string, ev: Event): void {
-    void setLayerEnabled(id, (ev.target as HTMLInputElement).checked);
+async function toggle(id: string, ev: Event): Promise<void> {
+    const on = (ev.target as HTMLInputElement).checked;
+    if (on && (RAIN_LAYER_IDS as readonly string[]).includes(id)) {
+        for (const other of RAIN_LAYER_IDS) {
+            if (other === id) continue;
+            if (state.layers[other]?.enabled) {
+                await setLayerEnabled(other, false);
+            }
+        }
+    }
+    await setLayerEnabled(id, on);
 }
 
 function onOpacity(id: string, ev: Event): void {

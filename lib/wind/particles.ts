@@ -5,7 +5,7 @@
 import type { LiveWxMap } from '../core/map-types.ts';
 import { mapOf } from '../core/map-host.ts';
 import { getLayerOpacity, registerLayer } from '../layers/registry.ts';
-import { fetchWindGrid, sampleGrid, type WindGrid } from './grid.ts';
+import { boundsKey, fetchWindGrid, sampleGrid, type WindGrid } from './grid.ts';
 
 const PARTICLES = 900;
 const TRAIL = 36;
@@ -14,8 +14,8 @@ const FADES = 8;
 const MAX_AGE = 200;
 const PX_PER_FRAME_AT_6MS = 1.7;
 const TICK_MS = 50;
-const MOVE_SETTLE_MS = 600;
-const REFRESH_MS = 10 * 60_000;
+const MOVE_SETTLE_MS = 1_200;
+const REFRESH_MS = 15 * 60_000;
 
 /** Speed band upper edges (m/s) matching Atmosphere WindView. */
 const BAND_MAX_MS = [2, 5, 8, 12, 18];
@@ -39,6 +39,8 @@ let refreshTimer: ReturnType<typeof setInterval> | null = null;
 let abort: AbortController | null = null;
 let statusText = 'Off';
 let opacity = 0.85;
+let lastBoundsKey = '';
+let backoffUntil = 0;
 
 const lon = new Float64Array(PARTICLES);
 const lat = new Float64Array(PARTICLES);
@@ -209,8 +211,24 @@ function tick(): void {
     tickTimer = setTimeout(tick, TICK_MS);
 }
 
-async function loadGrid(): Promise<void> {
+async function loadGrid(force = false): Promise<void> {
     if (!running) return;
+    if (!force && Date.now() < backoffUntil) {
+        statusText = 'Rate limited — retrying soon';
+        return;
+    }
+    const b = mapOf()?.getBounds?.();
+    if (b && !force) {
+        const key = boundsKey({
+            west: b.getWest(),
+            east: b.getEast(),
+            south: b.getSouth(),
+            north: b.getNorth(),
+        });
+        // Skip tiny pans/zooms — keeps Open-Meteo under its free-tier budget.
+        if (key === lastBoundsKey && grid) return;
+        lastBoundsKey = key;
+    }
     abort?.abort();
     abort = new AbortController();
     statusText = 'Loading…';
@@ -224,7 +242,13 @@ async function loadGrid(): Promise<void> {
         if (map) draw(map);
     } catch (e) {
         if ((e as { name?: string })?.name === 'AbortError') return;
-        statusText = e instanceof Error ? e.message : 'Wind failed';
+        const msg = e instanceof Error ? e.message : 'Wind failed';
+        if (/429|Too Many Requests/i.test(msg)) {
+            backoffUntil = Date.now() + 60_000;
+            statusText = 'Rate limited — wait ~1 min';
+            return;
+        }
+        statusText = msg;
     }
 }
 
@@ -302,6 +326,8 @@ export function registerWindLayer(): void {
             abort?.abort();
             abort = null;
             grid = null;
+            lastBoundsKey = '';
+            backoffUntil = 0;
             detachMap(mapOf());
             statusText = 'Off';
         },

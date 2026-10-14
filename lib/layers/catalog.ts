@@ -75,7 +75,7 @@ export function registerCatalogLayers(): void {
     registerWmsLayer({
         id: 'satellite',
         group: 'radar',
-        label: 'GOES Infrared',
+        label: 'Infrared Cloud Tops',
         description: 'GOES CONUS IR',
         hosts: ['mesonet.agron.iastate.edu'],
         sends: 'Tiles',
@@ -88,7 +88,7 @@ export function registerCatalogLayers(): void {
     registerWmsLayer({
         id: 'rain_forecast',
         group: 'radar',
-        label: 'MRMS Rain (1h)',
+        label: 'Rain Forecast',
         description: 'MRMS 1-hour precipitation',
         hosts: ['mesonet.agron.iastate.edu'],
         sends: 'Tiles',
@@ -101,8 +101,8 @@ export function registerCatalogLayers(): void {
     registerWmsLayer({
         id: 'rain_12h',
         group: 'radar',
-        label: 'MRMS Rain (12h)',
-        description: 'MRMS 12-hour QPE',
+        label: 'Rain (12 Hours)',
+        description: 'MRMS 12-hour precipitation',
         hosts: ['mapservices.weather.noaa.gov'],
         sends: 'Tiles',
         sourceId: 'livewx-mrms12-src',
@@ -118,7 +118,7 @@ export function registerCatalogLayers(): void {
     registerWmsLayer({
         id: 'rain_totals',
         group: 'radar',
-        label: 'MRMS Rain (24h)',
+        label: 'Rain (24 Hours)',
         description: 'MRMS 24-hour precipitation',
         hosts: ['mesonet.agron.iastate.edu'],
         sends: 'Tiles',

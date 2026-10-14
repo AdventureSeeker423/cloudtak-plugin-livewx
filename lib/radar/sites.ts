@@ -1,3 +1,4 @@
+import rawAliases from '../../data/radar_site_aliases.json';
 import rawSites from '../../data/radar_sites.json';
 import { CONUS_SITE_ID, TDWR_RANGE_KM, WSR88D_RANGE_KM } from '../core/constants.ts';
 
@@ -11,6 +12,27 @@ export interface RadarSite {
     place: string;
     tz: string;
     elevation: number;
+}
+
+/** ROC RDA / system names not already in `place` (e.g. Hytop for KHTX). */
+const SITE_ALIASES = rawAliases as Record<string, string[]>;
+
+function siteAliases(site: RadarSite): string[] {
+    return SITE_ALIASES[site.id] ?? [];
+}
+
+/** Place plus RDA aliases, for search and display. */
+export function siteNames(site: RadarSite): string[] {
+    const names = [site.place, ...siteAliases(site)];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const name of names) {
+        const key = name.toLowerCase();
+        if (!name || seen.has(key)) continue;
+        seen.add(key);
+        out.push(name);
+    }
+    return out;
 }
 
 export const CONUS_SITE: RadarSite = {
@@ -86,12 +108,23 @@ export function coverageForSiteId(id: string): {
 export function siteLabel(site: RadarSite): string {
     if (site.id === CONUS_SITE_ID) return 'CONUS Mosaic';
     const kind = site.type === 'tdwr' ? 'TDWR' : 'WSR-88D';
-    return `${site.id} — ${site.place}, ${site.state} (${kind})`;
+    const place = site.place;
+    const alias = siteAliases(site).find((a) => {
+        const al = a.toLowerCase();
+        const pl = place.toLowerCase();
+        return al !== pl && !al.includes(pl) && !pl.includes(al);
+    });
+    const where = alias ? `${place}/${alias}` : place;
+    return `${site.id} — ${where}, ${site.state} (${kind})`;
 }
 
 export interface SiteGroup {
     state: string;
     sites: RadarSite[];
+}
+
+function nameHaystack(site: RadarSite): string {
+    return siteNames(site).join('\n').toLowerCase();
 }
 
 export function groupedSites(query = ''): SiteGroup[] {
@@ -100,7 +133,7 @@ export function groupedSites(query = ''): SiteGroup[] {
         if (!q) return true;
         return (
             s.id.toLowerCase().includes(q)
-            || s.place.toLowerCase().includes(q)
+            || nameHaystack(s).includes(q)
             || s.state.toLowerCase().includes(q)
             || toIemId(s.id).toLowerCase().includes(q)
         );
@@ -126,14 +159,15 @@ function siteScore(site: RadarSite, q: string): number | null {
     if (!q) return 50;
     const id = site.id.toLowerCase();
     const iem = toIemId(site.id).toLowerCase();
-    const place = site.place.toLowerCase();
+    const names = siteNames(site).map((n) => n.toLowerCase());
     const st = site.state.toLowerCase();
     if (id === q || iem === q) return 1;
     if (id.startsWith(q) || iem.startsWith(q)) return 2;
-    if (place.startsWith(q)) return 3;
-    if (place.includes(q)) return 4;
-    if (st === q || st.startsWith(q)) return 5;
-    if (id.includes(q) || iem.includes(q) || st.includes(q)) return 6;
+    if (names.some((n) => n === q)) return 3;
+    if (names.some((n) => n.startsWith(q))) return 4;
+    if (names.some((n) => n.includes(q))) return 5;
+    if (st === q || st.startsWith(q)) return 6;
+    if (id.includes(q) || iem.includes(q) || st.includes(q)) return 7;
     return null;
 }
 
