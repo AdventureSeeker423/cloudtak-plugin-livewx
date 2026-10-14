@@ -10,10 +10,10 @@ import {
     RADAR_LAYER_ID,
     SITES_CIRCLE_ID,
     SITES_LABEL_ID,
-} from './constants.ts';
-import type { LiveWxMap } from './map-types.ts';
-import { state } from './state.ts';
-import { SURFACE_BG, SURFACE_BORDER, SURFACE_FG, syncSidebarTheme } from './theme.ts';
+} from '../core/constants.ts';
+import type { LiveWxMap } from '../core/map-types.ts';
+import { state } from '../core/state.ts';
+import { SURFACE_BG, SURFACE_BORDER, SURFACE_FG, syncSidebarTheme } from '../core/theme.ts';
 
 interface AlertProps {
     event?: string;

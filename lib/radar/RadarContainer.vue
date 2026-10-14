@@ -90,10 +90,36 @@
                 @input='onLightningLifetime'
                 @wheel.prevent='onLightningLifetimeWheel'
             >
-            <p class='text-secondary small mb-3'>
+            <p class='text-secondary small mb-1'>
                 {{ lightningStatus }} · {{ lightning.inView.length }} In View
             </p>
+            <p class='text-secondary small mb-1'>
+                {{ lightning.attribution }}
+            </p>
+            <p class='text-warning small mb-3'>
+                {{ lightning.disclaimer }}
+            </p>
         </template>
+
+        <label
+            class='form-label mb-1'
+            for='livewx-radar-provider'
+        >
+            Radar provider
+        </label>
+        <select
+            id='livewx-radar-provider'
+            class='form-select mb-3'
+            :value='state.radarProvider'
+            @change='onProvider'
+        >
+            <option value='iem'>
+                IEM (NEXRAD)
+            </option>
+            <option value='auto'>
+                Auto (IEM + RainViewer outside US)
+            </option>
+        </select>
 
         <template v-if='state.overlayEnabled'>
             <label
@@ -357,10 +383,11 @@ import {
     togglePlay,
     visibleProducts,
 } from './radar.ts';
-import { lightning } from './lightning.ts';
+import { lightning } from '../lightning/lightning.ts';
 import { groupedOptions, availableTilts, filterMax, filterUnit, tiltLabel } from './products.ts';
 import { findSite, isMosaic, searchSites, siteLabel } from './sites.ts';
 import {
+    persist,
     setAlertsEnabled,
     setFilter,
     setLightningEnabled,
@@ -371,7 +398,7 @@ import {
     setSitesOnMap,
     setTilt,
     state,
-} from './state.ts';
+} from '../core/state.ts';
 import { ageLabel, shortAgeLabel } from './tiles.ts';
 
 defineProps<{
@@ -600,6 +627,12 @@ function onAlertsToggle(ev: Event): void {
 function onLightningToggle(ev: Event): void {
     setLightningEnabled((ev.target as HTMLInputElement).checked);
     applyLightningToggle();
+}
+
+function onProvider(ev: Event): void {
+    state.radarProvider = (ev.target as HTMLSelectElement).value === 'auto' ? 'auto' : 'iem';
+    persist();
+    void applyRadarSettings();
 }
 
 function onLightningLifetime(ev: Event): void {

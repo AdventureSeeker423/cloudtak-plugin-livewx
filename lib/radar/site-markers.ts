@@ -8,11 +8,11 @@ import {
     SITES_SOURCE_ID,
     TDWR_RANGE_KM,
     WSR88D_RANGE_KM,
-} from './constants.ts';
-import type { LiveWxMap } from './map-types.ts';
+} from '../core/constants.ts';
+import type { LiveWxMap } from '../core/map-types.ts';
 import { allSites, findSite, isMosaic } from './sites.ts';
 import type { RadarSite } from './sites.ts';
-import { state } from './state.ts';
+import { state } from '../core/state.ts';
 
 type GeoSource = { setData?: (data: unknown) => void };
 

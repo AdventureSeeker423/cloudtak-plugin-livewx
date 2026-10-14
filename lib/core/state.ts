@@ -5,13 +5,29 @@ import {
     DEFAULT_LIGHTNING_STALE_SEC,
     DEFAULT_OPACITY,
     STORAGE_KEY,
+    type AppPageId,
 } from './constants.ts';
+import type { UnitSystem } from './units.ts';
 import {
     MOSAIC_DEFAULT_PRODUCT_ID,
     SITE_DEFAULT_PRODUCT_ID,
     getProduct,
-} from './products.ts';
-import { isMosaic } from './sites.ts';
+} from '../radar/products.ts';
+import { isMosaic } from '../radar/sites.ts';
+
+export type PointMode = 'self' | 'center' | 'pick' | 'favorite';
+
+export interface FavoritePoint {
+    id: string;
+    name: string;
+    lat: number;
+    lon: number;
+}
+
+export interface LayerPersist {
+    enabled: boolean;
+    consent: boolean;
+}
 
 export interface PersistedSettings {
     siteId: string;
@@ -24,6 +40,19 @@ export interface PersistedSettings {
     lightningStaleSec: number;
     overlayEnabled: boolean;
     sitesOnMap: boolean;
+    /** Atmosphere-rich additions */
+    page: AppPageId;
+    units: UnitSystem;
+    pointMode: PointMode;
+    pickLat: number | null;
+    pickLon: number | null;
+    favoriteId: string | null;
+    favorites: FavoritePoint[];
+    forecastSourceId: string;
+    layers: Record<string, LayerPersist>;
+    densityLightningEnabled: boolean;
+    radarProvider: 'iem' | 'auto';
+    consentedSources: string[];
 }
 
 export interface LiveWxState extends PersistedSettings {
@@ -32,6 +61,10 @@ export interface LiveWxState extends PersistedSettings {
     status: string;
     error: string;
     alertCount: number;
+    /** Live query point (updated by point controller). */
+    queryLat: number | null;
+    queryLon: number | null;
+    placeName: string;
 }
 
 function load(): PersistedSettings {
@@ -46,6 +79,18 @@ function load(): PersistedSettings {
         lightningStaleSec: DEFAULT_LIGHTNING_STALE_SEC,
         overlayEnabled: false,
         sitesOnMap: false,
+        page: 'forecast',
+        units: 'us',
+        pointMode: 'center',
+        pickLat: null,
+        pickLon: null,
+        favoriteId: null,
+        favorites: [],
+        forecastSourceId: 'nws',
+        layers: {},
+        densityLightningEnabled: false,
+        radarProvider: 'iem',
+        consentedSources: [],
     };
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
@@ -67,6 +112,24 @@ function load(): PersistedSettings {
             ),
             overlayEnabled: Boolean(parsed.overlayEnabled),
             sitesOnMap: Boolean(parsed.sitesOnMap),
+            page: (parsed.page as AppPageId) || defaults.page,
+            units: (parsed.units as UnitSystem) || defaults.units,
+            pointMode: (parsed.pointMode as PointMode) || defaults.pointMode,
+            pickLat: typeof parsed.pickLat === 'number' ? parsed.pickLat : null,
+            pickLon: typeof parsed.pickLon === 'number' ? parsed.pickLon : null,
+            favoriteId: typeof parsed.favoriteId === 'string' ? parsed.favoriteId : null,
+            favorites: Array.isArray(parsed.favorites) ? parsed.favorites as FavoritePoint[] : [],
+            forecastSourceId: typeof parsed.forecastSourceId === 'string'
+                ? parsed.forecastSourceId
+                : defaults.forecastSourceId,
+            layers: parsed.layers && typeof parsed.layers === 'object'
+                ? parsed.layers as Record<string, LayerPersist>
+                : {},
+            densityLightningEnabled: Boolean(parsed.densityLightningEnabled),
+            radarProvider: parsed.radarProvider === 'auto' ? 'auto' : 'iem',
+            consentedSources: Array.isArray(parsed.consentedSources)
+                ? parsed.consentedSources as string[]
+                : [],
         };
     } catch {
         return defaults;
@@ -87,16 +150,15 @@ export const state = reactive<LiveWxState>({
     status: 'Overlay Off',
     error: '',
     alertCount: 0,
+    queryLat: null,
+    queryLon: null,
+    placeName: '',
 });
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 
-export function persist(): void {
-    if (persistTimer) {
-        clearTimeout(persistTimer);
-        persistTimer = null;
-    }
-    const payload: PersistedSettings = {
+function payload(): PersistedSettings {
+    return {
         siteId: state.siteId,
         productId: state.productId,
         tilt: state.tilt,
@@ -107,12 +169,35 @@ export function persist(): void {
         lightningStaleSec: state.lightningStaleSec,
         overlayEnabled: state.overlayEnabled,
         sitesOnMap: state.sitesOnMap,
+        page: state.page,
+        units: state.units,
+        pointMode: state.pointMode,
+        pickLat: state.pickLat,
+        pickLon: state.pickLon,
+        favoriteId: state.favoriteId,
+        favorites: state.favorites,
+        forecastSourceId: state.forecastSourceId,
+        layers: state.layers,
+        densityLightningEnabled: state.densityLightningEnabled,
+        radarProvider: state.radarProvider,
+        consentedSources: state.consentedSources,
     };
+}
+
+export function persist(): void {
+    if (persistTimer) {
+        clearTimeout(persistTimer);
+        persistTimer = null;
+    }
     try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload()));
     } catch {
         /* ignore quota */
     }
+}
+
+export function persistLayers(): void {
+    persist();
 }
 
 /** Debounced persist for slider drags / wheel so the overlay can update immediately. */
@@ -175,5 +260,47 @@ export function setLightningStaleSec(sec: number): void {
 
 export function setSitesOnMap(enabled: boolean): void {
     state.sitesOnMap = enabled;
+    persist();
+}
+
+export function setPage(page: AppPageId): void {
+    state.page = page;
+    persist();
+}
+
+export function setUnits(units: UnitSystem): void {
+    state.units = units;
+    persist();
+}
+
+export function setPointMode(mode: PointMode): void {
+    state.pointMode = mode;
+    persist();
+}
+
+export function setPickPoint(lat: number, lon: number): void {
+    state.pickLat = lat;
+    state.pickLon = lon;
+    state.pointMode = 'pick';
+    persist();
+}
+
+export function addFavorite(name: string, lat: number, lon: number): void {
+    const id = `fav-${Date.now()}`;
+    state.favorites.push({ id, name, lat, lon });
+    state.favoriteId = id;
+    state.pointMode = 'favorite';
+    persist();
+}
+
+export function removeFavorite(id: string): void {
+    state.favorites = state.favorites.filter((f) => f.id !== id);
+    if (state.favoriteId === id) state.favoriteId = null;
+    persist();
+}
+
+export function selectFavorite(id: string): void {
+    state.favoriteId = id;
+    state.pointMode = 'favorite';
     persist();
 }

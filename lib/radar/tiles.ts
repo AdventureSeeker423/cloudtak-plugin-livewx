@@ -1,4 +1,4 @@
-import { CONUS_SITE_ID, IEM_JSON_BASE, IEM_TMS_BASE, PROTOCOL_NAME } from './constants.ts';
+import { CONUS_SITE_ID, IEM_JSON_BASE, IEM_TMS_BASE, PROTOCOL_NAME } from '../core/constants.ts';
 import { filterImageData } from './palette.ts';
 import { knownProductCodes, siteCode } from './products.ts';
 import type { FilterKind, RadarProduct } from './products.ts';

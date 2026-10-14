@@ -177,6 +177,8 @@ fi
 
 PLUGIN_DEST="$CT_DIR/app/plugins/$INSTALL_DIR_NAME"
 LEGACY_DEST="$CT_DIR/api/web/plugins/$INSTALL_DIR_NAME"
+SERVER_ROUTE_DEST="$CT_DIR/api/stateless/routes/plugin-livewx.ts"
+SERVER_ROUTE_SRC_NAME="plugin-livewx.ts"
 
 # CloudTAK 13.102 does not load api/web/plugins. A leftover copy there is often
 # owned by another user, so a failed delete must not fail the install.
@@ -211,6 +213,10 @@ if [ "$ACTION" = "remove" ]; then
         rm -rf "$PLUGIN_DEST"
         echo "Removed plugin: app/plugins/$INSTALL_DIR_NAME"
     fi
+    if [ -f "$SERVER_ROUTE_DEST" ]; then
+        rm -f "$SERVER_ROUTE_DEST"
+        echo "Removed server route: api/stateless/routes/$SERVER_ROUTE_SRC_NAME"
+    fi
     remove_legacy
 else
     if [ ! -f "$SOURCE_DIR/index.ts" ]; then
@@ -220,11 +226,21 @@ else
     mkdir -p "$CT_DIR/app/plugins"
 
     rm -rf "$PLUGIN_DEST"
-    mkdir -p "$PLUGIN_DEST/lib" "$PLUGIN_DEST/data"
+    mkdir -p "$PLUGIN_DEST/lib" "$PLUGIN_DEST/data" "$PLUGIN_DEST/server"
     cp "$SOURCE_DIR/index.ts" "$SOURCE_DIR/package.json" "$SOURCE_DIR/tsconfig.json" \
         "$SOURCE_DIR/eslint.config.js" "$SOURCE_DIR/env.d.ts" "$PLUGIN_DEST/"
     cp -R "$SOURCE_DIR/lib/." "$PLUGIN_DEST/lib/"
     cp -R "$SOURCE_DIR/data/." "$PLUGIN_DEST/data/"
+    if [ -f "$SOURCE_DIR/server/$SERVER_ROUTE_SRC_NAME" ]; then
+        cp "$SOURCE_DIR/server/$SERVER_ROUTE_SRC_NAME" "$PLUGIN_DEST/server/"
+        if [ -d "$CT_DIR/api/stateless/routes" ]; then
+            cp "$SOURCE_DIR/server/$SERVER_ROUTE_SRC_NAME" "$SERVER_ROUTE_DEST"
+            echo "Installed server route: api/stateless/routes/$SERVER_ROUTE_SRC_NAME"
+            echo "  (Blitzortung relay + CORS proxy — required for live lightning)"
+        else
+            echo "WARNING: $CT_DIR/api/stateless/routes not found — client plugin installed without relay." >&2
+        fi
+    fi
     echo "Installed plugin: app/plugins/$INSTALL_DIR_NAME"
     echo "  source: $SOURCE_DIR"
     remove_legacy

@@ -1,6 +1,6 @@
 import type { LiveWxMap } from './map-types.ts';
 import { SURFACE_BG, SURFACE_BORDER, SURFACE_FG, syncSidebarTheme } from './theme.ts';
-import { radarUpdatedLabel } from './tiles.ts';
+import { radarUpdatedLabel } from '../radar/tiles.ts';
 
 const STYLE_ID = 'livewx-age-control-style';
 const TICK_MS = 15_000;

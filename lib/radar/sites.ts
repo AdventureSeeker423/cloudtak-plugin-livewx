@@ -1,5 +1,5 @@
-import rawSites from '../data/radar_sites.json';
-import { CONUS_SITE_ID, TDWR_RANGE_KM, WSR88D_RANGE_KM } from './constants.ts';
+import rawSites from '../../data/radar_sites.json';
+import { CONUS_SITE_ID, TDWR_RANGE_KM, WSR88D_RANGE_KM } from '../core/constants.ts';
 
 export interface RadarSite {
     type: string;

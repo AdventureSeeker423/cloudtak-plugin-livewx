@@ -1,7 +1,7 @@
 import { ref } from 'vue';
 import type { PluginAPI } from '@tak-ps/cloudtak';
-import { stackAlertLayers, startAlerts, stopAlerts } from './alerts.ts';
-import { attachRadarAgeControl, detachRadarAgeControl, setRadarAge } from './age-control.ts';
+import { stackAlertLayers, startAlerts, stopAlerts } from '../alerts/alerts.ts';
+import { attachRadarAgeControl, detachRadarAgeControl, setRadarAge } from '../core/age-control.ts';
 import {
     ALERT_LINE_ID,
     MOSAIC_MAXZOOM,
@@ -9,7 +9,7 @@ import {
     RADAR_SOURCE_ID,
     REFRESH_MS,
     RIDGE_MAXZOOM,
-} from './constants.ts';
+} from '../core/constants.ts';
 import {
     applyLightning,
     destroyLightning,
@@ -17,8 +17,9 @@ import {
     raiseLightningLayer,
     refreshLightningView,
     restoreLightningLayers,
-} from './lightning.ts';
-import type { LiveWxMap } from './map-types.ts';
+} from '../lightning/lightning.ts';
+import type { LiveWxMap } from '../core/map-types.ts';
+import { mapOf as hostMapOf, registerModule, unregisterModule } from '../core/map-host.ts';
 import {
     FALLBACK_SITE_CODES,
     availableTilts,
@@ -30,8 +31,8 @@ import {
 import type { RadarProduct } from './products.ts';
 import { refreshSiteMarkers, startSiteMarkers, stopSiteMarkers } from './site-markers.ts';
 import { findSite, isMosaic, toIemId } from './sites.ts';
-import { persist, setSite, state } from './state.ts';
-import { syncSidebarTheme } from './theme.ts';
+import { persist, setSite, state } from '../core/state.ts';
+import { syncSidebarTheme } from '../core/theme.ts';
 import {
     ensureFilterProtocol,
     fetchAvailableProducts,
@@ -44,6 +45,7 @@ import {
     ageLabel,
     type ScanFrame,
 } from './tiles.ts';
+import { rainviewerTileUrl, fetchRainviewerHost } from './rainviewer.ts';
 
 type RasterSource = { setTiles?: (tiles: string[]) => void };
 
@@ -56,9 +58,9 @@ export const availableCodes = ref<string[] | null>(null);
 let frames: ScanFrame[] = [];
 export const replayFramesRef = ref<ScanFrame[]>([]);
 export const liveValidAt = ref<number | null>(null);
-let styleHandler: (() => void) | null = null;
 let lastSourceSig = '';
 let filterRaf = 0;
+let rainviewerHost: string | null = null;
 
 export function currentProduct(): RadarProduct | undefined {
     return getProduct(state.productId);
@@ -75,11 +77,27 @@ export function replayFrames(): ScanFrame[] {
 }
 
 function mapOf(): LiveWxMap | null {
-    try {
-        return (apiRef?.map as unknown as LiveWxMap) ?? null;
-    } catch {
-        return null;
-    }
+    return hostMapOf() ?? (() => {
+        try {
+            return (apiRef?.map as unknown as LiveWxMap) ?? null;
+        } catch {
+            return null;
+        }
+    })();
+}
+
+function useRainviewer(): boolean {
+    if (state.radarProvider !== 'auto') return false;
+    const map = mapOf();
+    const c = map?.getCenter?.();
+    if (!c) return false;
+    // Outside rough NWS CONUS/AK/HI/PR boxes → RainViewer world composite
+    const { lat, lng } = c;
+    const inConus = lat > 24 && lat < 50 && lng > -125 && lng < -66;
+    const inAk = lat > 51 && lat < 72 && lng > -170 && lng < -130;
+    const inHi = lat > 18 && lat < 23 && lng > -161 && lng < -154;
+    const inPr = lat > 17 && lat < 19 && lng > -68 && lng < -65;
+    return !(inConus || inAk || inHi || inPr);
 }
 
 function firstSymbolLayer(map: LiveWxMap): string | undefined {
@@ -130,18 +148,28 @@ function applyTiles(map: LiveWxMap): void {
     const product = currentProduct();
     if (!product) return;
     const display = displaySite();
-    const useProtocol = protocolOn && product.filterKind !== 'other';
-    const url = tileUrl({
-        siteId: display.siteId,
-        product,
-        siteType: display.siteType,
-        stamp: currentStamp(),
-        filter: state.filter,
-        tilt: state.tilt,
-        cacheBust,
-    }, useProtocol);
+    let url: string;
+    let maxzoom = display.maxzoom;
+    let sigBase = `${display.siteId}|${display.maxzoom}`;
 
-    const sig = `${display.siteId}|${display.maxzoom}`;
+    if (useRainviewer() && rainviewerHost) {
+        url = rainviewerHost;
+        maxzoom = 12;
+        sigBase = `rainviewer|${maxzoom}`;
+    } else {
+        const useProtocol = protocolOn && product.filterKind !== 'other';
+        url = tileUrl({
+            siteId: display.siteId,
+            product,
+            siteType: display.siteType,
+            stamp: currentStamp(),
+            filter: state.filter,
+            tilt: state.tilt,
+            cacheBust,
+        }, useProtocol);
+    }
+
+    const sig = sigBase;
     const source = map.getSource(RADAR_SOURCE_ID) as RasterSource | undefined;
     if (source?.setTiles && lastSourceSig === sig && map.getLayer(RADAR_LAYER_ID)) {
         source.setTiles([url]);
@@ -156,7 +184,7 @@ function applyTiles(map: LiveWxMap): void {
         tiles: [url],
         tileSize: 256,
         minzoom: 0,
-        maxzoom: display.maxzoom,
+        maxzoom,
     });
     map.addLayer({
         id: RADAR_LAYER_ID,
@@ -280,9 +308,7 @@ function startRefresh(): void {
     }, REFRESH_MS);
 }
 
-function onStyle(): void {
-    const map = mapOf();
-    if (!map) return;
+function onStyle(map: LiveWxMap): void {
     lastSourceSig = '';
     if (state.overlayEnabled) ensureRadarLayer(map);
     attachRadarAgeControl(map);
@@ -312,12 +338,12 @@ export async function init(api: PluginAPI): Promise<void> {
     apiRef = api;
     protocolOn = await ensureFilterProtocol();
     initLightning(api);
+    registerModule({
+        id: 'radar-core',
+        restore: (map) => onStyle(map),
+    });
     const map = mapOf();
-    if (map) {
-        styleHandler = onStyle;
-        map.on('style.load', styleHandler);
-        attachRadarAgeControl(map);
-    }
+    if (map) attachRadarAgeControl(map);
     if (state.alertsEnabled) startAlerts(api);
     if (state.sitesOnMap) startSiteMarkers(api, onSitePicked);
     if (state.lightningEnabled) applyLightning();
@@ -338,15 +364,10 @@ export function destroy(): void {
     stopAlerts();
     stopSiteMarkers();
     destroyLightning();
+    unregisterModule('radar-core');
     const map = mapOf();
-    if (map) {
-        if (styleHandler) {
-            try { map.off('style.load', styleHandler); } catch { /* ignore */ }
-        }
-        removeRadarLayer(map);
-    }
+    if (map) removeRadarLayer(map);
     detachRadarAgeControl();
-    styleHandler = null;
     apiRef = null;
     void removeFilterProtocol();
 }
@@ -367,6 +388,12 @@ export async function setOverlayEnabled(enabled: boolean): Promise<void> {
         return;
     }
     cacheBust = Date.now();
+    if (useRainviewer()) {
+        const rv = await fetchRainviewerHost();
+        rainviewerHost = rv ? rainviewerTileUrl(rv.host, rv.path) : null;
+    } else {
+        rainviewerHost = null;
+    }
     await loadAvailable();
     await loadFrames();
     if (map) {

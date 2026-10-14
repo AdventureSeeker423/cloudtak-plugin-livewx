@@ -1,19 +1,21 @@
 /**
- * Live Blitzortung strikes in the current map view.
- * Protocol adapted from https://github.com/cmlaird/CloudTAK-Plugin-Lightning (MIT).
- * Data: Blitzortung.org & contributors — entertainment use only.
+ * Live Blitzortung strikes in the current map view via CloudTAK server relay.
+ * Clients never connect to Blitzortung hosts (usage guidelines).
+ * Display protocol adapted from https://github.com/cmlaird/CloudTAK-Plugin-Lightning (MIT).
+ * Data: Blitzortung.org & contributors (CC BY-SA 4.0) — entertainment / SA only.
  */
 import { reactive } from 'vue';
 import type { PluginAPI } from '@tak-ps/cloudtak';
 import {
+    BLITZ_RELAY_PATH,
     LIGHTNING_ICON_ID,
     LIGHTNING_LAYER_ID,
     LIGHTNING_LEGACY_CIRCLE_ID,
     LIGHTNING_SOURCE_ID,
-} from './constants.ts';
-import type { LiveWxMap } from './map-types.ts';
-import { coverageForSiteId, kmBetween } from './sites.ts';
-import { state } from './state.ts';
+} from '../core/constants.ts';
+import type { LiveWxMap } from '../core/map-types.ts';
+import { coverageForSiteId, kmBetween } from '../radar/sites.ts';
+import { state } from '../core/state.ts';
 
 export interface Strike {
     id: string;
@@ -27,11 +29,8 @@ export interface VisibleStrike extends Strike {
     compass: string;
 }
 
-const WS_SERVERS = [
-    'wss://ws1.blitzortung.org',
-    'wss://ws7.blitzortung.org',
-    'wss://ws8.blitzortung.org',
-];
+export const BLITZ_ATTRIBUTION = 'Lightning data © Blitzortung.org & contributors (CC BY-SA 4.0)';
+export const BLITZ_DISCLAIMER = 'Entertainment / situational awareness only — not for life safety or official warning.';
 
 const COMPASS = [
     'N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
@@ -46,17 +45,18 @@ export const lightning = reactive({
     totalSeen: 0,
     strikes: [] as Strike[],
     inView: [] as VisibleStrike[],
+    attribution: BLITZ_ATTRIBUTION,
+    disclaimer: BLITZ_DISCLAIMER,
 });
 
 type GeoSource = { setData?: (data: unknown) => void };
 
 let apiRef: PluginAPI | null = null;
-let ws: WebSocket | null = null;
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
 let pruneTimer: ReturnType<typeof setInterval> | null = null;
-let serverIdx = Math.floor(Math.random() * WS_SERVERS.length);
 let viewHandler: (() => void) | null = null;
 let running = false;
+let sinceMs = 0;
 
 function mapOf(): LiveWxMap | null {
     try {
@@ -64,31 +64,6 @@ function mapOf(): LiveWxMap | null {
     } catch {
         return null;
     }
-}
-
-function lzwDecode(input: string): string {
-    const dict: Record<number, string> = {};
-    const data = input.split('');
-    let currChar = data[0];
-    let oldPhrase = currChar;
-    const out = [currChar];
-    let code = 256;
-    let phrase: string;
-
-    for (let i = 1; i < data.length; i++) {
-        const currCode = data[i].charCodeAt(0);
-        if (currCode < 256) {
-            phrase = data[i];
-        } else {
-            phrase = dict[currCode] ? dict[currCode] : (oldPhrase + currChar);
-        }
-        out.push(phrase);
-        currChar = phrase.charAt(0);
-        dict[code] = oldPhrase + currChar;
-        code++;
-        oldPhrase = phrase;
-    }
-    return out.join('');
 }
 
 function toRad(d: number): number {
@@ -376,70 +351,52 @@ function unbindView(): void {
     viewHandler = null;
 }
 
-function scheduleReconnect(): void {
-    if (reconnectTimer || !running) return;
-    reconnectTimer = setTimeout(() => {
-        reconnectTimer = null;
-        connect();
-    }, 3000);
-}
-
 function onStrike(lat: number, lon: number, timeMs: number): void {
+    const id = `${timeMs}-${Math.round(lat * 1e4)}-${Math.round(lon * 1e4)}`;
+    if (lightning.strikes.some((s) => s.id === id)) return;
     lightning.totalSeen++;
-    lightning.strikes.push({
-        id: `${timeMs}-${Math.round(lat * 1e4)}-${Math.round(lon * 1e4)}`,
-        lat,
-        lon,
-        timeMs,
-    });
+    lightning.strikes.push({ id, lat, lon, timeMs });
     if (lightning.strikes.length > 5000) {
         lightning.strikes = lightning.strikes.slice(-4000);
     }
-    renderStrikes();
 }
 
-function connect(): void {
+async function pollRelay(): Promise<void> {
     if (!running) return;
-    const url = WS_SERVERS[serverIdx % WS_SERVERS.length];
-    serverIdx++;
     try {
-        ws = new WebSocket(url);
+        const url = `${BLITZ_RELAY_PATH}?since=${sinceMs}`;
+        const res = await fetch(url, {
+            headers: { Accept: 'application/json' },
+            credentials: 'same-origin',
+        });
+        if (!res.ok) {
+            lightning.connected = false;
+            lightning.error = res.status === 404
+                ? 'Lightning relay not installed (run install.sh for server route)'
+                : `Lightning relay HTTP ${res.status}`;
+            return;
+        }
+        const body = await res.json() as {
+            connected?: boolean;
+            attribution?: string;
+            disclaimer?: string;
+            strikes?: Array<{ lat: number; lon: number; timeMs: number }>;
+        };
+        lightning.connected = Boolean(body.connected);
+        if (body.attribution) lightning.attribution = body.attribution;
+        if (body.disclaimer) lightning.disclaimer = body.disclaimer;
+        lightning.error = lightning.connected ? '' : 'Relay upstream reconnecting…';
+        for (const s of body.strikes ?? []) {
+            if (typeof s.lat === 'number' && typeof s.lon === 'number') {
+                onStrike(s.lat, s.lon, s.timeMs || Date.now());
+                if (s.timeMs > sinceMs) sinceMs = s.timeMs;
+            }
+        }
+        renderStrikes();
     } catch {
-        lightning.error = 'Lightning Feed Blocked Or Unavailable';
-        scheduleReconnect();
-        return;
+        lightning.connected = false;
+        lightning.error = 'Lightning relay unreachable';
     }
-
-    ws.onopen = () => {
-        lightning.connected = true;
-        lightning.error = '';
-        ws?.send(JSON.stringify({ a: 111 }));
-    };
-
-    ws.onmessage = (evt: MessageEvent) => {
-        try {
-            const decoded = lzwDecode(String(evt.data));
-            const rec = JSON.parse(decoded) as { lat?: number; lon?: number; time?: number };
-            if (typeof rec.lat !== 'number' || typeof rec.lon !== 'number') return;
-            onStrike(rec.lat, rec.lon, rec.time ? Math.round(rec.time / 1e6) : Date.now());
-        } catch {
-            /* non-strike frame */
-        }
-    };
-
-    ws.onclose = () => {
-        lightning.connected = false;
-        if (running) {
-            lightning.error = lightning.error || 'Reconnecting…';
-            scheduleReconnect();
-        }
-    };
-
-    ws.onerror = () => {
-        lightning.connected = false;
-        lightning.error = 'Lightning Feed Error (Check CSP For Blitzortung Websocket)';
-        try { ws?.close(); } catch { /* ignore */ }
-    };
 }
 
 export function initLightning(api: PluginAPI): void {
@@ -454,7 +411,10 @@ export function startLightning(): void {
     bindView();
     if (!running) {
         running = true;
-        connect();
+        sinceMs = Date.now() - state.lightningStaleSec * 1000;
+        void pollRelay();
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = setInterval(() => { void pollRelay(); }, 2000);
         if (pruneTimer) clearInterval(pruneTimer);
         pruneTimer = setInterval(() => {
             pruneStrikes();
@@ -467,17 +427,13 @@ export function startLightning(): void {
 export function stopLightning(): void {
     running = false;
     lightning.connected = false;
-    if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = null;
+    if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
     }
     if (pruneTimer) {
         clearInterval(pruneTimer);
         pruneTimer = null;
-    }
-    if (ws) {
-        try { ws.close(); } catch { /* ignore */ }
-        ws = null;
     }
     unbindView();
 }

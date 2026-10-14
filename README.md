@@ -1,28 +1,55 @@
-# LiveWX Radar
+# LiveWX
 
-CloudTAK plugin that overlays live NEXRAD imagery, nationwide NWS watches/warnings, and live lightning on the map.
+CloudTAK weather plugin with Atmosphere-class features: point forecast, grouped map layers (fire, hydro, marine, storms, snow), IEM/RainViewer radar, nationwide NWS watches & warnings, and live lightning via a CloudTAK relay.
 
-Requires CloudTAK **13.102** or newer.
+Requires CloudTAK **13.102** or newer. Apache-2.0 clean-room implementation (not a fork of the AGPL Atmosphere ATAK plugin).
 
 ## What it does
 
-- Radar overlay is **off on first install**, then remembers the last on/off setting.
-- **CONUS mosaic** is the default site (Iowa Mesonet `nexrad-n0q` tiles).
-- Pick a WSR-88D or TDWR site for single-radar RIDGE products (default Level 3 **N0B** reflectivity).
-- Level 2 names (REF, VEL, …) map to the closest IEM Level 3 image for this version.
-- Transparency and a min-value **filter** slider (hide weak reflectivity / slow velocity).
-- Optional **watches and warnings** from `api.weather.gov` — nationwide, not scoped to the selected radar.
-- Optional **lightning** from Blitzortung — off by default; when on, strikes in the current map view show as lightning bolts that fade from white to yellow to orange to dark red over the strike lifetime (default 120s). The public websocket is **live only**; turning Lightning on does not backfill strikes from before that moment.
-- With a single radar selected, lightning is also limited to that site’s range.
-- Simple last-hour **replay** when IEM has archive frames.
+### Forecast
 
-Imagery is pre-rendered IEM tiles (CONUS mosaic and per-site RIDGE). Product names are NWS/IEM Level 2 and Level 3 codes; defaults are N0B reflectivity and N0G velocity.
+- Point modes: my position, map center, pick on map, named favorites
+- Units: US / metric / aviation (display convert, no refetch)
+- Pluggable JSON sources (`data/wx_sources/`) — bundled **NWS grid** and **Open-Meteo**
+- Fire-relevant fields when the provider sends them (20-ft wind, mixing height, transport wind, WBGT)
+- Area Forecast Discussion (AFD) when using NWS
+- Stale-while-revalidate with age badge
 
-Lightning is client-side only (no TAK/CoT). Strike locations are filtered to the map bounds, not a picked center. This data is for **entertainment / situational awareness only** — not for life safety or official warning. Blitzortung’s historical archive requires a station login and is not used here.
+### Radar (kept + upgraded)
 
-### Lightning and CloudTAK CSP
+- Overlay off on first install; settings persist in `localStorage`
+- CONUS mosaic / single-site RIDGE via Iowa Mesonet
+- Optional **Auto** provider: RainViewer world composite outside NWS coverage
+- Opacity, min-value filter, last-hour replay, radar age control, site markers
 
-Production CloudTAK nginx often sets `Content-Security-Policy` with `connect-src 'self'`. That **blocks** `wss://ws1.blitzortung.org`, `wss://ws7.blitzortung.org`, and `wss://ws8.blitzortung.org`, so the Lightning toggle will fail to connect until those hosts are allowed in CloudTAK’s CSP. This plugin does not patch CloudTAK nginx.
+### Alerts & lightning
+
+- **Watches & warnings** from `api.weather.gov` (nationwide) — unchanged from prior LiveWX
+- **Live lightning (Blitzortung)** via CloudTAK **server relay** (clients never open Blitzortung sockets)
+- **Lightning density (NOAA)** — GOES GLM WMS, Atmosphere-style delayed density
+
+### Layer catalog
+
+Foldable groups with consent dialogs, map keys, and status lines:
+
+Spot & stations · Wind · Storms · Fire · Rain & rivers · Ocean · Snow · Ground · Alerts
+
+Includes fire weather outlook/zones, stations, smoke/AQI/PSPS/ERC, flash flood outlook, river gauges, rain totals, debris flow, buoys, SST, hurricanes, storm reports, tornado paths, avalanche, snow depth, earthquakes, spot forecasts, satellite/wind/rain pictures (WMS stand-ins for NOMADS GRIB).
+
+### Pages
+
+Forecast · Layers · Radar · Spot · Fire Weather Zones · SAWTI · Fire Danger · Weather Stations · River Gauges · Buoys · Storm Reports · Rain Gauges
+
+## Blitzortung usage
+
+[Blitzortung.org](https://www.blitzortung.org/en/contact.php) requires external apps to:
+
+- Retrieve data from a **separate server** (not Blitzortung’s hosts) — this plugin uses `/api/livewx/lightning`
+- Stay **non-commercial**, freely accessible, clearly attributed (**CC BY-SA 4.0**)
+- Not use data for storm warning / life-safety systems
+- Prevent misuse where practical
+
+The UI shows attribution and a non-warning disclaimer whenever live lightning is on. Install the server route with `install.sh` so the relay is present. Do not point browsers at `wss://ws*.blitzortung.org`.
 
 ## Install
 
@@ -32,15 +59,7 @@ cd cloudtak-plugin-livewx
 ./install.sh
 ```
 
-Or pass the CloudTAK path:
-
-```bash
-./install.sh /path/to/CloudTAK
-```
-
-The script finds CloudTAK at `$CLOUDTAK`, `~/CloudTAK`, `/home/takwerx/CloudTAK`, or `/home/*/CloudTAK`. Before copying, it fetches the latest `main` from GitHub. If you run it from a marketplace copy (no plugin `.git`), it clones GitHub into a temp dir so the install is not stuck on stale files. Then it copies into `app/plugins/livewx-radar/` and rebuilds the API image. After it finishes: **Settings → Refresh App**. A normal browser refresh is not enough.
-
-Because `index.ts` is at the repository root, you can also bake it in with CloudTAK’s `WEB_PLUGINS` build arg.
+Copies into `app/plugins/livewx-radar/` and `api/stateless/routes/plugin-livewx.ts`, then rebuilds the API image. Afterward: **Settings → Refresh App**.
 
 ```bash
 ./install.sh --remove
@@ -48,11 +67,25 @@ Because `index.ts` is at the repository root, you can also bake it in with Cloud
 
 ### Local development
 
-Symlink this checkout to `CloudTAK/app/plugins/livewx-radar`, run `npm install` here (with `@tak-ps/cloudtak` pointing at your CloudTAK `app` package), and restart `npm run serve` in `app`.
+Symlink this checkout to `CloudTAK/app/plugins/livewx-radar`, copy or symlink `server/plugin-livewx.ts` into `api/stateless/routes/`, run `npm install` here (with `@tak-ps/cloudtak` pointing at your CloudTAK `app` package), and restart `npm run serve` in `app`.
+
+### CSP / network
+
+- Browser `connect-src` must allow same-origin `/api/livewx/*` (already `'self'` on typical CloudTAK nginx).
+- Weather hosts are contacted from the browser when CORS allows; otherwise use `/api/livewx/proxy?url=…` (allowlisted hosts only).
+- You no longer need Blitzortung hosts in CSP.
+
+## Accepted deltas vs ATAK Atmosphere
+
+- Wind / smoke / model rain / waves use **WMS/TMS pictures**, not on-device GRIB particle fields
+- General NWS WWA are **kept** (Atmosphere omits them for a companion IPAWS plugin)
+- No CoT publish for weather features
 
 ## Attribution
 
-- Radar tiles and storm attributes: [Iowa Environmental Mesonet](https://mesonet.agron.iastate.edu/ogc/)
-- Watches and warnings: [National Weather Service API](https://www.weather.gov/documentation/services-web-api)
-- Lightning: [Blitzortung.org](https://www.blitzortung.org/) and contributors. Lightning overlay adapted from [cmlaird/CloudTAK-Plugin-Lightning](https://github.com/cmlaird/CloudTAK-Plugin-Lightning) (MIT).
-- Site list and product taxonomy adapted from [Supercell Wx](https://github.com/dpaulat/supercell-wx) (MIT)
+- Radar: [Iowa Environmental Mesonet](https://mesonet.agron.iastate.edu/ogc/), [RainViewer](https://www.rainviewer.com/)
+- Forecast / alerts / many layers: [NWS API](https://www.weather.gov/documentation/services-web-api) and NOAA map services
+- Open-Meteo: [open-meteo.com](https://open-meteo.com/) (CC BY 4.0)
+- Lightning: [Blitzortung.org](https://www.blitzortung.org/) & contributors (CC BY-SA 4.0); display adapted from [cmlaird/CloudTAK-Plugin-Lightning](https://github.com/cmlaird/CloudTAK-Plugin-Lightning) (MIT)
+- Site list / product taxonomy adapted from [Supercell Wx](https://github.com/dpaulat/supercell-wx) (MIT)
+- Feature parity inspired by [takwerx/atmosphere](https://github.com/takwerx/atmosphere) (independent reimplementation)

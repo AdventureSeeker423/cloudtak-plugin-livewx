@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "sourceId": "nws",
+  "displayName": "NWS Grid (US)",
+  "description": "National Weather Service forecast grid — fire-weather fields when available.",
+  "attribution": "National Weather Service (api.weather.gov)",
+  "termsUrl": "https://www.weather.gov/documentation/services-web-api",
+  "resolveUrl": "https://api.weather.gov/points/{lat},{lon}",
+  "resolvePath": "properties.forecastGridData",
+  "placePaths": [
+    "properties.relativeLocation.properties.city",
+    "properties.relativeLocation.properties.state"
+  ],
+  "layout": "grid",
+  "parameters": [
+    {
+      "key": "temperature",
+      "label": "Temperature",
+      "quantity": "temperature",
+      "unit": "celsius",
+      "seriesPath": "properties.temperature.values",
+      "defaultOn": true
+    },
+    {
+      "key": "relativeHumidity",
+      "label": "RH",
+      "quantity": "percent",
+      "unit": "percent",
+      "seriesPath": "properties.relativeHumidity.values",
+      "defaultOn": true
+    },
+    {
+      "key": "windSpeed",
+      "label": "Wind",
+      "quantity": "speed",
+      "unit": "km_h-1",
+      "seriesPath": "properties.windSpeed.values",
+      "defaultOn": true
+    },
+    {
+      "key": "windDirection",
+      "label": "Wind Dir",
+      "quantity": "angle",
+      "unit": "degree",
+      "seriesPath": "properties.windDirection.values",
+      "defaultOn": true
+    },
+    {
+      "key": "windGust",
+      "label": "Gust",
+      "quantity": "speed",
+      "unit": "km_h-1",
+      "seriesPath": "properties.windGust.values",
+      "defaultOn": true
+    },
+    {
+      "key": "skyCover",
+      "label": "Sky Cover",
+      "quantity": "percent",
+      "unit": "percent",
+      "seriesPath": "properties.skyCover.values",
+      "defaultOn": true
+    },
+    {
+      "key": "probabilityOfPrecipitation",
+      "label": "PoP",
+      "quantity": "percent",
+      "unit": "percent",
+      "seriesPath": "properties.probabilityOfPrecipitation.values",
+      "defaultOn": true
+    },
+    {
+      "key": "twentyFootWindSpeed",
+      "label": "20-ft Wind",
+      "quantity": "speed",
+      "unit": "km_h-1",
+      "seriesPath": "properties.twentyFootWindSpeed.values",
+      "defaultOn": true
+    },
+    {
+      "key": "twentyFootWindDirection",
+      "label": "20-ft Dir",
+      "quantity": "angle",
+      "unit": "degree",
+      "seriesPath": "properties.twentyFootWindDirection.values",
+      "defaultOn": true
+    },
+    {
+      "key": "mixingHeight",
+      "label": "Mixing Height",
+      "quantity": "length",
+      "unit": "m",
+      "seriesPath": "properties.mixingHeight.values",
+      "defaultOn": true
+    },
+    {
+      "key": "transportWindSpeed",
+      "label": "Transport Wind",
+      "quantity": "speed",
+      "unit": "km_h-1",
+      "seriesPath": "properties.transportWindSpeed.values",
+      "defaultOn": true
+    },
+    {
+      "key": "transportWindDirection",
+      "label": "Transport Dir",
+      "quantity": "angle",
+      "unit": "degree",
+      "seriesPath": "properties.transportWindDirection.values",
+      "defaultOn": true
+    },
+    {
+      "key": "wetBulbGlobeTemperature",
+      "label": "WBGT",
+      "quantity": "temperature",
+      "unit": "celsius",
+      "seriesPath": "properties.wetBulbGlobeTemperature.values",
+      "defaultOn": true
+    }
+  ]
+}

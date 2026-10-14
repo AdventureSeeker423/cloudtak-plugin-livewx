@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "sourceId": "open-meteo",
+  "displayName": "Open-Meteo",
+  "description": "Global forecast, no API key. Attribution required (CC BY 4.0).",
+  "attribution": "Weather data by Open-Meteo.com (CC BY 4.0)",
+  "termsUrl": "https://open-meteo.com/en/terms",
+  "requestUrl": "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current={group:current}&hourly={group:hourly}&daily={group:daily}&timezone=auto&wind_speed_unit=ms",
+  "layout": "columns",
+  "timePath": "hourly.time",
+  "currentTimePath": "current.time",
+  "parameters": [
+    {
+      "key": "temperature_2m",
+      "label": "Temperature",
+      "quantity": "temperature",
+      "unit": "celsius",
+      "requestGroups": ["current", "hourly"],
+      "currentPath": "current.temperature_2m",
+      "seriesPath": "hourly.temperature_2m",
+      "defaultOn": true
+    },
+    {
+      "key": "relative_humidity_2m",
+      "label": "RH",
+      "quantity": "percent",
+      "unit": "percent",
+      "requestGroups": ["current", "hourly"],
+      "currentPath": "current.relative_humidity_2m",
+      "seriesPath": "hourly.relative_humidity_2m",
+      "defaultOn": true
+    },
+    {
+      "key": "wind_speed_10m",
+      "label": "Wind",
+      "quantity": "speed",
+      "unit": "m/s",
+      "requestGroups": ["current", "hourly"],
+      "currentPath": "current.wind_speed_10m",
+      "seriesPath": "hourly.wind_speed_10m",
+      "defaultOn": true
+    },
+    {
+      "key": "wind_direction_10m",
+      "label": "Wind Dir",
+      "quantity": "angle",
+      "unit": "degree",
+      "requestGroups": ["current", "hourly"],
+      "currentPath": "current.wind_direction_10m",
+      "seriesPath": "hourly.wind_direction_10m",
+      "defaultOn": true
+    },
+    {
+      "key": "wind_gusts_10m",
+      "label": "Gust",
+      "quantity": "speed",
+      "unit": "m/s",
+      "requestGroups": ["current", "hourly"],
+      "currentPath": "current.wind_gusts_10m",
+      "seriesPath": "hourly.wind_gusts_10m",
+      "defaultOn": true
+    },
+    {
+      "key": "precipitation_probability",
+      "label": "PoP",
+      "quantity": "percent",
+      "unit": "percent",
+      "requestGroups": ["hourly"],
+      "seriesPath": "hourly.precipitation_probability",
+      "defaultOn": true
+    },
+    {
+      "key": "cloud_cover",
+      "label": "Sky Cover",
+      "quantity": "percent",
+      "unit": "percent",
+      "requestGroups": ["current", "hourly"],
+      "currentPath": "current.cloud_cover",
+      "seriesPath": "hourly.cloud_cover",
+      "defaultOn": true
+    },
+    {
+      "key": "temperature_2m_max",
+      "label": "High",
+      "quantity": "temperature",
+      "unit": "celsius",
+      "requestGroups": ["daily"],
+      "seriesPath": "daily.temperature_2m_max",
+      "defaultOn": true
+    },
+    {
+      "key": "temperature_2m_min",
+      "label": "Low",
+      "quantity": "temperature",
+      "unit": "celsius",
+      "requestGroups": ["daily"],
+      "seriesPath": "daily.temperature_2m_min",
+      "defaultOn": true
+    }
+  ]
+}

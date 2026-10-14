@@ -16,11 +16,16 @@ export const LIGHTNING_SOURCE_ID = 'livewx-lightning-strikes';
 export const LIGHTNING_LAYER_ID = 'livewx-lightning-strikes-icon';
 export const LIGHTNING_ICON_ID = 'livewx-lightning-bolt';
 export const LIGHTNING_LEGACY_CIRCLE_ID = 'livewx-lightning-strikes-circle';
+export const LIGHTNING_DENSITY_SOURCE_ID = 'livewx-lightning-density-source';
+export const LIGHTNING_DENSITY_LAYER_ID = 'livewx-lightning-density-layer';
 
 export const CONUS_SITE_ID = 'CONUS';
 export const IEM_TMS_BASE = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0';
 export const IEM_JSON_BASE = 'https://mesonet.agron.iastate.edu/json';
 export const NWS_ALERTS_URL = 'https://api.weather.gov/alerts/active';
+export const RAINVIEWER_API = 'https://api.rainviewer.com/public/weather-maps.json';
+export const NOWCOAST_WMS = 'https://nowcoast.noaa.gov/geoserver/weather_radar/wms';
+export const MAPSERVICES_NWS = 'https://mapservices.weather.noaa.gov';
 
 export const STORAGE_KEY = 'livewx-radar-settings';
 export const REFRESH_MS = 60_000;
@@ -40,3 +45,48 @@ export const RIDGE_MAXZOOM = 10;
 export const WSR88D_RANGE_KM = 230;
 /** TDWR reflectivity / Doppler range (48 nmi). */
 export const TDWR_RANGE_KM = 90;
+
+/** Same-origin path for Blitzortung relay (CloudTAK server plugin). */
+export const BLITZ_RELAY_PATH = '/api/livewx/lightning';
+
+export type AppPageId =
+    | 'forecast'
+    | 'layers'
+    | 'radar'
+    | 'spot'
+    | 'zones'
+    | 'sawti'
+    | 'fire_danger'
+    | 'stations'
+    | 'gauges'
+    | 'buoys'
+    | 'storm_reports'
+    | 'rain_gauges';
+
+export const PAGE_LABELS: Record<AppPageId, string> = {
+    forecast: 'Forecast',
+    layers: 'Layers',
+    radar: 'Radar',
+    spot: 'Spot',
+    zones: 'Fire Weather Zones',
+    sawti: 'SAWTI',
+    fire_danger: 'Fire Danger',
+    stations: 'Weather Stations',
+    gauges: 'River Gauges',
+    buoys: 'Buoys',
+    storm_reports: 'Storm Reports',
+    rain_gauges: 'Rain Gauges',
+};
+
+export const PRIMARY_PAGES: AppPageId[] = [
+    'forecast',
+    'layers',
+    'radar',
+    'spot',
+    'zones',
+    'sawti',
+    'fire_danger',
+    'stations',
+    'gauges',
+    'buoys',
+];

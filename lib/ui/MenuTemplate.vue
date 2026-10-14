@@ -67,7 +67,7 @@ import {
 
 import { useRouter } from 'vue-router';
 import { computed, onMounted } from 'vue';
-import { syncSidebarTheme } from './theme.ts';
+import { syncSidebarTheme } from '../core/theme.ts';
 
 const router = useRouter();
 

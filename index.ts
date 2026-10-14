@@ -1,18 +1,18 @@
 import type { App } from 'vue';
 import { h } from 'vue';
 import type { PluginAPI, PluginInstance } from '@tak-ps/cloudtak';
-import MenuTemplate from './lib/MenuTemplate.vue';
-import RadarContainer from './lib/RadarContainer.vue';
+import MenuTemplate from './lib/ui/MenuTemplate.vue';
+import AppShell from './lib/ui/AppShell.vue';
 import IconRadarUrl from './lib/Radar.svg';
-import { MENU_KEY, ROUTE_NAME } from './lib/constants.ts';
-import { destroy, init } from './lib/radar.ts';
+import { MENU_KEY, ROUTE_NAME } from './lib/core/constants.ts';
+import { destroy, init } from './lib/plugin.ts';
 
 const IconRadar = {
     render: () => h('img', {
         src: IconRadarUrl,
         width: 32,
         height: 32,
-        alt: 'LiveWX Radar',
+        alt: 'LiveWX',
     }),
 };
 
@@ -29,8 +29,8 @@ export default class LiveWxRadar implements PluginInstance {
             path: 'plugin-livewx-radar',
             name: ROUTE_NAME,
             component: {
-                render: () => h(MenuTemplate, { name: 'LiveWX Radar', back: false }, {
-                    default: () => h(RadarContainer, { api: this.api }),
+                render: () => h(MenuTemplate, { name: 'LiveWX', back: false }, {
+                    default: () => h(AppShell, { api: this.api }),
                 }),
             },
         }, 'home-menu');
@@ -46,10 +46,10 @@ export default class LiveWxRadar implements PluginInstance {
 
         this.api.menu.add({
             key: MENU_KEY,
-            label: 'LiveWX Radar',
+            label: 'LiveWX',
             route: ROUTE_NAME,
-            tooltip: 'LiveWX Radar',
-            description: 'NEXRAD overlay, NWS watches/warnings, and lightning',
+            tooltip: 'LiveWX Weather',
+            description: 'Forecast, radar, NWS alerts, lightning, fire/hydro/marine layers',
             icon: IconRadar,
         });
     }
