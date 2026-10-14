@@ -8,9 +8,10 @@ import {
 import type { LiveWxMap } from '../core/map-types.ts';
 import { mapOf } from '../core/map-host.ts';
 import { persist, state } from '../core/state.ts';
-import { registerLayer } from '../layers/registry.ts';
+import { getLayerOpacity, registerLayer } from '../layers/registry.ts';
 import { ensureRasterLayer, nowcoastTileUrl, removeRaster } from '../layers/wms.ts';
 
+const DEFAULT_OPACITY = 0.7;
 let running = false;
 
 function tile(): string {
@@ -19,18 +20,30 @@ function tile(): string {
 }
 
 function paint(map: LiveWxMap): void {
-    ensureRasterLayer(map, LIGHTNING_DENSITY_SOURCE_ID, LIGHTNING_DENSITY_LAYER_ID, tile(), 0.7);
+    ensureRasterLayer(
+        map,
+        LIGHTNING_DENSITY_SOURCE_ID,
+        LIGHTNING_DENSITY_LAYER_ID,
+        tile(),
+        getLayerOpacity('lightning_density'),
+    );
 }
 
 export function registerDensityLayer(): void {
     registerLayer({
         id: 'lightning_density',
         group: 'alerts',
-        label: 'Lightning Density (NOAA)',
-        description: '15-minute GOES GLM flash density — delayed, not live strikes',
+        label: 'Density',
+        description: 'GLM flash density (delayed)',
         hosts: ['nowcoast.noaa.gov'],
-        sends: 'Map tile requests only.',
-        keyHtml: 'Density bands (not individual strikes). Latency applies.',
+        sends: 'Tiles',
+        defaultOpacity: DEFAULT_OPACITY,
+        applyOpacity: (opacity) => {
+            const m = mapOf();
+            if (m?.getLayer(LIGHTNING_DENSITY_LAYER_ID)) {
+                m.setPaintProperty?.(LIGHTNING_DENSITY_LAYER_ID, 'raster-opacity', opacity);
+            }
+        },
         start: () => {
             running = true;
             state.densityLightningEnabled = true;
@@ -51,7 +64,7 @@ export function registerDensityLayer(): void {
                 paint(map);
             }
         },
-        status: () => (running ? 'Density raster on' : 'Off'),
+        status: () => (running ? 'On' : 'Off'),
     });
 }
 

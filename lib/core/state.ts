@@ -27,6 +27,8 @@ export interface FavoritePoint {
 export interface LayerPersist {
     enabled: boolean;
     consent: boolean;
+    /** Raster overlay opacity 0–1 when supported. */
+    opacity?: number;
 }
 
 export interface PersistedSettings {
@@ -79,7 +81,7 @@ function load(): PersistedSettings {
         lightningStaleSec: DEFAULT_LIGHTNING_STALE_SEC,
         overlayEnabled: false,
         sitesOnMap: false,
-        page: 'forecast',
+        page: 'home',
         units: 'us',
         pointMode: 'center',
         pickLat: null,
@@ -96,6 +98,10 @@ function load(): PersistedSettings {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return defaults;
         const parsed = JSON.parse(raw) as Partial<PersistedSettings>;
+        const pageRaw = parsed.page as string | undefined;
+        const page: AppPageId = pageRaw === 'forecast' || pageRaw === 'radar' || pageRaw === 'home'
+            ? pageRaw
+            : 'home';
         return {
             siteId: typeof parsed.siteId === 'string' ? parsed.siteId : defaults.siteId,
             productId: typeof parsed.productId === 'string' ? parsed.productId : defaults.productId,
@@ -112,7 +118,7 @@ function load(): PersistedSettings {
             ),
             overlayEnabled: Boolean(parsed.overlayEnabled),
             sitesOnMap: Boolean(parsed.sitesOnMap),
-            page: (parsed.page as AppPageId) || defaults.page,
+            page,
             units: (parsed.units as UnitSystem) || defaults.units,
             pointMode: (parsed.pointMode as PointMode) || defaults.pointMode,
             pickLat: typeof parsed.pickLat === 'number' ? parsed.pickLat : null,
@@ -122,9 +128,7 @@ function load(): PersistedSettings {
             forecastSourceId: typeof parsed.forecastSourceId === 'string'
                 ? parsed.forecastSourceId
                 : defaults.forecastSourceId,
-            layers: parsed.layers && typeof parsed.layers === 'object'
-                ? parsed.layers as Record<string, LayerPersist>
-                : {},
+            layers: normalizeLayers(parsed.layers),
             densityLightningEnabled: Boolean(parsed.densityLightningEnabled),
             radarProvider: parsed.radarProvider === 'auto' ? 'auto' : 'iem',
             consentedSources: Array.isArray(parsed.consentedSources)
@@ -139,6 +143,24 @@ function load(): PersistedSettings {
 function clamp(n: number, min: number, max: number, fallback: number): number {
     if (!Number.isFinite(n)) return fallback;
     return Math.min(max, Math.max(min, n));
+}
+
+function normalizeLayers(raw: unknown): Record<string, LayerPersist> {
+    if (!raw || typeof raw !== 'object') return {};
+    const out: Record<string, LayerPersist> = {};
+    for (const [id, v] of Object.entries(raw as Record<string, unknown>)) {
+        if (!v || typeof v !== 'object') continue;
+        const row = v as Partial<LayerPersist>;
+        const entry: LayerPersist = {
+            enabled: Boolean(row.enabled),
+            consent: Boolean(row.consent),
+        };
+        if (typeof row.opacity === 'number' && Number.isFinite(row.opacity)) {
+            entry.opacity = clamp(row.opacity, 0, 1, DEFAULT_OPACITY);
+        }
+        out[id] = entry;
+    }
+    return out;
 }
 
 const persisted = load();

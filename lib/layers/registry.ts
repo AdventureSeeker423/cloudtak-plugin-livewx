@@ -8,18 +8,13 @@ import type { FeatureCollection } from '../core/geojson.ts';
 import { emptyFeatureCollection } from '../core/geojson.ts';
 import type { LiveWxMap } from '../core/map-types.ts';
 import { getApi, mapOf, registerModule } from '../core/map-host.ts';
-import { persistLayers, state } from '../core/state.ts';
+import { persistLayers, persistSoon, setOpacity, state } from '../core/state.ts';
 
 export type LayerGroupId =
-    | 'spot_stations'
+    | 'radar'
     | 'wind'
-    | 'storms'
-    | 'fire'
-    | 'rain_rivers'
-    | 'ocean'
-    | 'snow'
-    | 'ground'
-    | 'alerts';
+    | 'alerts'
+    | 'more';
 
 export type LayerDef = {
     id: string;
@@ -31,6 +26,10 @@ export type LayerDef = {
     sends: string;
     experimental?: boolean;
     keyHtml?: string;
+    /** Default raster opacity when the layer supports a slider. */
+    defaultOpacity?: number;
+    /** Apply opacity to the live map paint (raster overlays). */
+    applyOpacity?: (opacity: number) => void;
     start: () => void | Promise<void>;
     stop: () => void | Promise<void>;
     restore: (map: LiveWxMap) => void;
@@ -38,15 +37,10 @@ export type LayerDef = {
 };
 
 export const GROUP_LABELS: Record<LayerGroupId, string> = {
-    spot_stations: 'Spot & Stations',
+    radar: 'Radar',
     wind: 'Wind',
-    storms: 'Storms',
-    fire: 'Fire',
-    rain_rivers: 'Rain & Rivers',
-    ocean: 'Ocean',
-    snow: 'Snow',
-    ground: 'Ground',
-    alerts: 'Alerts & Lightning',
+    alerts: 'Alerts',
+    more: 'More',
 };
 
 const defs = new Map<string, LayerDef>();
@@ -87,6 +81,11 @@ export function isEnabled(id: string): boolean {
     return Boolean(state.layers[id]?.enabled);
 }
 
+function clamp01(n: number, fallback: number): number {
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(1, Math.max(0, n));
+}
+
 function ensureLayerState(id: string): void {
     if (!state.layers[id]) {
         // Replace object so Vue tracks new keys reliably.
@@ -97,17 +96,56 @@ function ensureLayerState(id: string): void {
     }
 }
 
-function writeLayerState(id: string, patch: { enabled?: boolean; consent?: boolean }): void {
+function writeLayerState(
+    id: string,
+    patch: { enabled?: boolean; consent?: boolean; opacity?: number },
+): void {
+    ensureLayerState(id);
+    const cur = state.layers[id];
+    const next: typeof cur = {
+        enabled: patch.enabled ?? cur.enabled,
+        consent: patch.consent ?? cur.consent,
+    };
+    const opacity = patch.opacity ?? cur.opacity;
+    if (typeof opacity === 'number') next.opacity = clamp01(opacity, defs.get(id)?.defaultOpacity ?? 0.7);
+    state.layers = {
+        ...state.layers,
+        [id]: next,
+    };
+    persistLayers();
+}
+
+/** Whether the master pane should show an opacity slider for this layer. */
+export function layerHasOpacity(id: string): boolean {
+    if (id === 'radar_overlay') return true;
+    return Boolean(defs.get(id)?.applyOpacity);
+}
+
+export function getLayerOpacity(id: string): number {
+    if (id === 'radar_overlay') return state.opacity;
+    const fallback = defs.get(id)?.defaultOpacity ?? 0.7;
+    const stored = state.layers[id]?.opacity;
+    return typeof stored === 'number' ? clamp01(stored, fallback) : fallback;
+}
+
+export function setLayerOpacity(id: string, opacity: number): void {
+    const def = defs.get(id);
+    const fallback = def?.defaultOpacity ?? 0.7;
+    const n = clamp01(opacity, fallback);
+    if (id === 'radar_overlay') {
+        setOpacity(n);
+        def?.applyOpacity?.(n);
+        return;
+    }
+    if (!def?.applyOpacity) return;
     ensureLayerState(id);
     const cur = state.layers[id];
     state.layers = {
         ...state.layers,
-        [id]: {
-            enabled: patch.enabled ?? cur.enabled,
-            consent: patch.consent ?? cur.consent,
-        },
+        [id]: { ...cur, opacity: n },
     };
-    persistLayers();
+    persistSoon();
+    def.applyOpacity(n);
 }
 
 export async function setLayerEnabled(id: string, enabled: boolean): Promise<void> {
@@ -118,7 +156,13 @@ export async function setLayerEnabled(id: string, enabled: boolean): Promise<voi
     }
     layerUi.busy[id] = true;
     // Enabling implies consent for the hosts listed on the row.
-    writeLayerState(id, enabled ? { enabled: true, consent: true } : { enabled: false });
+    const enablePatch: { enabled: boolean; consent?: boolean; opacity?: number } = enabled
+        ? { enabled: true, consent: true }
+        : { enabled: false };
+    if (enabled && def.defaultOpacity != null && state.layers[id]?.opacity == null) {
+        enablePatch.opacity = def.defaultOpacity;
+    }
+    writeLayerState(id, enablePatch);
     refreshStatus(id);
     try {
         if (enabled) {

@@ -1,21 +1,33 @@
 <template>
     <div class='livewx-app'>
-        <div class='livewx-chrome mb-3'>
-            <div class='d-flex flex-wrap gap-2 align-items-center mb-2'>
+        <div class='livewx-chrome mb-2'>
+            <div
+                v-if='state.page !== "home"'
+                class='mb-2'
+            >
+                <button
+                    class='btn btn-sm btn-outline-secondary'
+                    type='button'
+                    @click='setPage("home")'
+                >
+                    ← Back
+                </button>
+            </div>
+            <div class='d-flex flex-wrap gap-2 align-items-center'>
                 <select
                     class='form-select form-select-sm'
-                    style='max-width: 9rem'
+                    style='max-width: 8rem'
                     :value='state.pointMode'
                     @change='onPointMode'
                 >
                     <option value='self'>
-                        My position
+                        Me
                     </option>
                     <option value='center'>
-                        Map center
+                        Center
                     </option>
                     <option value='pick'>
-                        Pick a point
+                        Pick
                     </option>
                     <option value='favorite'>
                         Favorite
@@ -24,7 +36,7 @@
                 <select
                     v-if='state.pointMode === "favorite"'
                     class='form-select form-select-sm'
-                    style='max-width: 10rem'
+                    style='max-width: 9rem'
                     :value='state.favoriteId || ""'
                     @change='onFavorite'
                 >
@@ -44,7 +56,7 @@
                 </select>
                 <select
                     class='form-select form-select-sm'
-                    style='max-width: 7rem'
+                    style='max-width: 6rem'
                     :value='state.units'
                     @change='onUnits'
                 >
@@ -55,73 +67,37 @@
                         Metric
                     </option>
                     <option value='aviation'>
-                        Aviation
+                        Avn
                     </option>
                 </select>
                 <button
                     class='btn btn-sm btn-outline-secondary'
                     type='button'
-                    title='Add map center as favorite'
+                    title='Favorite'
                     @click='addFav'
                 >
                     ★
                 </button>
-            </div>
-            <p
-                v-if='state.pointMode === "pick"'
-                class='text-secondary small mb-2'
-            >
-                Tap the map to set the forecast / query point.
-            </p>
-            <label
-                class='form-label small mb-1'
-                for='livewx-page'
-            >
-                Page
-            </label>
-            <select
-                id='livewx-page'
-                class='form-select form-select-sm mb-2'
-                :value='state.page'
-                @change='onPageSelect'
-            >
-                <option
-                    v-for='(label, id) in pageLabels'
-                    :key='id'
-                    :value='id'
-                >
-                    {{ label }}
-                </option>
-            </select>
-            <p class='text-secondary small mb-0'>
-                <span v-if='state.placeName'>{{ state.placeName }} · </span>
-                <span v-if='state.queryLat != null'>
-                    {{ state.queryLat }}, {{ state.queryLon }}
+                <span class='text-secondary small text-truncate'>
+                    <span v-if='state.placeName'>{{ state.placeName }}</span>
+                    <span v-else-if='state.queryLat != null'>
+                        {{ state.queryLat }}, {{ state.queryLon }}
+                    </span>
                 </span>
-            </p>
+            </div>
         </div>
 
-        <ForecastPage v-if='state.page === "forecast"' />
-        <LayersPage v-else-if='state.page === "layers"' />
+        <MasterPane v-if='state.page === "home"' />
+        <ForecastPage v-else-if='state.page === "forecast"' />
         <RadarContainer
             v-else-if='state.page === "radar"'
             :api='api'
         />
-        <SpotPage v-else-if='state.page === "spot"' />
-        <ZonesPage v-else-if='state.page === "zones"' />
-        <SawtiPage v-else-if='state.page === "sawti"' />
-        <FireDangerPage v-else-if='state.page === "fire_danger"' />
-        <StationsPage v-else-if='state.page === "stations"' />
-        <GaugesPage v-else-if='state.page === "gauges"' />
-        <BuoysPage v-else-if='state.page === "buoys"' />
-        <StormReportsPage v-else-if='state.page === "storm_reports"' />
-        <RainGaugesPage v-else-if='state.page === "rain_gauges"' />
     </div>
 </template>
 
 <script setup lang='ts'>
 import type { PluginAPI } from '@tak-ps/cloudtak';
-import { PAGE_LABELS, type AppPageId } from '../core/constants.ts';
 import { refreshQueryPoint } from '../core/point.ts';
 import {
     addFavorite,
@@ -135,21 +111,10 @@ import {
 import type { UnitSystem } from '../core/units.ts';
 import { refreshForecast } from '../forecast/engine.ts';
 import RadarContainer from '../radar/RadarContainer.vue';
-import BuoysPage from './pages/BuoysPage.vue';
-import FireDangerPage from './pages/FireDangerPage.vue';
 import ForecastPage from './pages/ForecastPage.vue';
-import GaugesPage from './pages/GaugesPage.vue';
-import LayersPage from './pages/LayersPage.vue';
-import RainGaugesPage from './pages/RainGaugesPage.vue';
-import SawtiPage from './pages/SawtiPage.vue';
-import SpotPage from './pages/SpotPage.vue';
-import StationsPage from './pages/StationsPage.vue';
-import StormReportsPage from './pages/StormReportsPage.vue';
-import ZonesPage from './pages/ZonesPage.vue';
+import MasterPane from './pages/MasterPane.vue';
 
 defineProps<{ api: PluginAPI }>();
-
-const pageLabels = PAGE_LABELS;
 
 async function afterPointChange(): Promise<void> {
     await refreshQueryPoint();
@@ -170,10 +135,6 @@ function onFavorite(e: Event): void {
     void afterPointChange();
 }
 
-function onPageSelect(e: Event): void {
-    setPage((e.target as HTMLSelectElement).value as AppPageId);
-}
-
 function addFav(): void {
     if (state.queryLat == null || state.queryLon == null) return;
     const name = window.prompt('Favorite name', state.placeName || 'Favorite');
@@ -189,6 +150,6 @@ function addFav(): void {
 }
 .livewx-chrome {
     border-bottom: 1px solid var(--livewx-border, var(--tblr-border-color, #333));
-    padding-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
 }
 </style>

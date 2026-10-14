@@ -1,20 +1,9 @@
 <template>
     <div class='livewx-pane'>
-        <div class='form-check form-switch mb-3'>
-            <input
-                id='livewx-overlay'
-                class='form-check-input'
-                type='checkbox'
-                :checked='state.overlayEnabled'
-                @change='onOverlayToggle'
-            >
-            <label
-                class='form-check-label'
-                for='livewx-overlay'
-            >
-                Radar Overlay
-            </label>
-        </div>
+        <h3 class='subheader'>
+            Radar settings
+        </h3>
+
         <template v-if='state.overlayEnabled'>
             <label
                 class='form-label mb-1'
@@ -34,78 +23,18 @@
                 @wheel.prevent='onOpacityWheel'
             >
         </template>
-
-        <div class='form-check form-switch mb-3'>
-            <input
-                id='livewx-alerts'
-                class='form-check-input'
-                type='checkbox'
-                :checked='state.alertsEnabled'
-                @change='onAlertsToggle'
-            >
-            <label
-                class='form-check-label'
-                for='livewx-alerts'
-            >
-                Watches &amp; Warnings
-            </label>
-        </div>
         <p
-            v-if='state.alertsEnabled'
+            v-else
             class='text-secondary small mb-3'
         >
-            {{ state.alertCount }} Active Nationwide (Not Limited To The Selected Radar).
+            Turn on Radar from Home to adjust overlay settings.
         </p>
-
-        <div class='form-check form-switch mb-3'>
-            <input
-                id='livewx-lightning'
-                class='form-check-input'
-                type='checkbox'
-                :checked='state.lightningEnabled'
-                @change='onLightningToggle'
-            >
-            <label
-                class='form-check-label'
-                for='livewx-lightning'
-            >
-                Lightning
-            </label>
-        </div>
-        <template v-if='state.lightningEnabled'>
-            <label
-                class='form-label mb-1'
-                for='livewx-lightning-lifetime'
-            >
-                Strike Lifetime {{ state.lightningStaleSec }}s
-            </label>
-            <input
-                id='livewx-lightning-lifetime'
-                class='form-range mb-2'
-                type='range'
-                min='15'
-                max='600'
-                step='15'
-                :value='state.lightningStaleSec'
-                @input='onLightningLifetime'
-                @wheel.prevent='onLightningLifetimeWheel'
-            >
-            <p class='text-secondary small mb-1'>
-                {{ lightningStatus }} · {{ lightning.inView.length }} In View
-            </p>
-            <p class='text-secondary small mb-1'>
-                {{ lightning.attribution }}
-            </p>
-            <p class='text-warning small mb-3'>
-                {{ lightning.disclaimer }}
-            </p>
-        </template>
 
         <label
             class='form-label mb-1'
             for='livewx-radar-provider'
         >
-            Radar provider
+            Provider
         </label>
         <select
             id='livewx-radar-provider'
@@ -114,244 +43,215 @@
             @change='onProvider'
         >
             <option value='iem'>
-                IEM (NEXRAD)
+                IEM
             </option>
             <option value='auto'>
-                Auto (IEM + RainViewer outside US)
+                Auto
             </option>
         </select>
 
-        <template v-if='state.overlayEnabled'>
+        <label
+            class='form-label mb-1'
+            for='livewx-site-search'
+        >
+            Site
+        </label>
+        <div
+            ref='siteComboEl'
+            class='site-combo mb-3'
+        >
+            <input
+                id='livewx-site-search'
+                class='form-control form-control-sm'
+                type='search'
+                autocomplete='off'
+                role='combobox'
+                aria-autocomplete='list'
+                aria-controls='livewx-site-list'
+                :aria-expanded='siteOpen ? "true" : "false"'
+                :placeholder='siteOpen ? "Search…" : selectedSiteLabel'
+                :value='siteOpen ? siteDraft : selectedSiteLabel'
+                @focus='onSiteFocus'
+                @input='onSiteDraft'
+                @keydown='onSiteKey'
+            >
+            <div
+                v-if='siteOpen'
+                id='livewx-site-list'
+                class='site-menu'
+                role='listbox'
+            >
+                <button
+                    v-for='(site, idx) in siteMatches'
+                    :key='site.id'
+                    class='site-option'
+                    :class='{ active: idx === siteHighlight }'
+                    type='button'
+                    role='option'
+                    :aria-selected='idx === siteHighlight ? "true" : "false"'
+                    @mousedown.prevent='pickSite(site.id)'
+                >
+                    {{ siteLabel(site) }}
+                </button>
+                <div
+                    v-if='siteDraft.trim() && !siteMatches.length'
+                    class='site-empty'
+                >
+                    No matches
+                </div>
+            </div>
+        </div>
+
+        <div class='form-check form-switch mb-3'>
+            <input
+                id='livewx-sites'
+                class='form-check-input'
+                type='checkbox'
+                :checked='state.sitesOnMap'
+                @change='onSitesToggle'
+            >
             <label
-                class='form-label mb-1'
-                for='livewx-site-search'
+                class='form-check-label'
+                for='livewx-sites'
             >
-                Radar Site
+                Sites on map
             </label>
-            <div
-                ref='siteComboEl'
-                class='site-combo mb-3'
-            >
-                <input
-                    id='livewx-site-search'
-                    class='form-control form-control-sm'
-                    type='search'
-                    autocomplete='off'
-                    role='combobox'
-                    aria-autocomplete='list'
-                    aria-controls='livewx-site-list'
-                    :aria-expanded='siteOpen ? "true" : "false"'
-                    :placeholder='siteOpen ? "Search Site, City, Or State" : selectedSiteLabel'
-                    :value='siteOpen ? siteDraft : selectedSiteLabel'
-                    @focus='onSiteFocus'
-                    @input='onSiteDraft'
-                    @keydown='onSiteKey'
-                >
-                <div
-                    v-if='siteOpen'
-                    id='livewx-site-list'
-                    class='site-menu'
-                    role='listbox'
-                >
-                    <button
-                        v-for='(site, idx) in siteMatches'
-                        :key='site.id'
-                        class='site-option'
-                        :class='{ active: idx === siteHighlight }'
-                        type='button'
-                        role='option'
-                        :aria-selected='idx === siteHighlight ? "true" : "false"'
-                        @mousedown.prevent='pickSite(site.id)'
-                    >
-                        {{ siteLabel(site) }}
-                    </button>
-                    <div
-                        v-if='!siteDraft.trim()'
-                        class='site-empty'
-                    >
-                        Type A City, State, Or Site ID
-                    </div>
-                    <div
-                        v-else-if='!siteMatches.length'
-                        class='site-empty'
-                    >
-                        No Matching Sites
-                    </div>
-                </div>
-            </div>
+        </div>
 
-            <div
-                class='form-check form-switch'
-                :class='state.sitesOnMap ? "mb-1" : "mb-3"'
-            >
-                <input
-                    id='livewx-sites'
-                    class='form-check-input'
-                    type='checkbox'
-                    :checked='state.sitesOnMap'
-                    @change='onSitesToggle'
-                >
-                <label
-                    class='form-check-label'
-                    for='livewx-sites'
-                >
-                    Show Radar Sites On Map
-                </label>
-            </div>
-            <p
-                v-if='state.sitesOnMap'
-                class='text-secondary small mb-3'
-            >
-                WSR-88D In Blue, TDWR In Orange. Click A Site To Select It.
-            </p>
-
-            <div class='d-flex gap-2 align-items-end mb-1'>
-                <div class='livewx-product'>
-                    <label
-                        class='form-label mb-1'
-                        for='livewx-product'
-                    >
-                        Data Type
-                    </label>
-                    <select
-                        id='livewx-product'
-                        class='form-select form-select-sm'
-                        :value='state.productId'
-                        @change='onProduct'
-                    >
-                        <optgroup
-                            v-for='group in productGroups'
-                            :key='group.group'
-                            :label='group.group'
-                        >
-                            <option
-                                v-for='product in group.products'
-                                :key='product.id'
-                                :value='product.id'
-                            >
-                                {{ product.label }}
-                            </option>
-                        </optgroup>
-                    </select>
-                </div>
-                <div
-                    v-if='tiltOptions.length > 1'
-                    class='livewx-tilt'
-                >
-                    <label
-                        class='form-label mb-1'
-                        for='livewx-tilt'
-                    >
-                        Tilt
-                    </label>
-                    <select
-                        id='livewx-tilt'
-                        class='form-select form-select-sm'
-                        :value='state.tilt'
-                        @change='onTilt'
-                    >
-                        <option
-                            v-for='tilt in tiltOptions'
-                            :key='tilt.index'
-                            :value='tilt.index'
-                        >
-                            {{ tilt.label }}
-                        </option>
-                    </select>
-                </div>
-            </div>
-            <p
-                v-if='isMosaic(state.siteId)'
-                class='text-secondary small mb-3'
-            >
-                Mosaic Mode Is Reflectivity, Echo Tops, And Precipitation. Pick A Radar Site For Velocity And Dual-Pol.
-            </p>
-            <p
-                v-else
-                class='text-secondary small mb-3'
-            >
-                Level 2 Names Use The Closest IEM Level 3 Image (REF→N0B, VEL→N0U).
-            </p>
-
-            <template v-if='filterAvailable'>
+        <div class='d-flex gap-2 align-items-end mb-3'>
+            <div class='livewx-product'>
                 <label
                     class='form-label mb-1'
-                    for='livewx-filter'
+                    for='livewx-product'
                 >
-                    Filter {{ filterLabel }}
+                    Product
                 </label>
+                <select
+                    id='livewx-product'
+                    class='form-select form-select-sm'
+                    :value='state.productId'
+                    @change='onProduct'
+                >
+                    <optgroup
+                        v-for='group in productGroups'
+                        :key='group.group'
+                        :label='group.group'
+                    >
+                        <option
+                            v-for='product in group.products'
+                            :key='product.id'
+                            :value='product.id'
+                        >
+                            {{ product.label }}
+                        </option>
+                    </optgroup>
+                </select>
+            </div>
+            <div
+                v-if='tiltOptions.length > 1'
+                class='livewx-tilt'
+            >
+                <label
+                    class='form-label mb-1'
+                    for='livewx-tilt'
+                >
+                    Tilt
+                </label>
+                <select
+                    id='livewx-tilt'
+                    class='form-select form-select-sm'
+                    :value='state.tilt'
+                    @change='onTilt'
+                >
+                    <option
+                        v-for='tilt in tiltOptions'
+                        :key='tilt.index'
+                        :value='tilt.index'
+                    >
+                        {{ tilt.label }}
+                    </option>
+                </select>
+            </div>
+        </div>
+
+        <template v-if='filterAvailable'>
+            <label
+                class='form-label mb-1'
+                for='livewx-filter'
+            >
+                Filter {{ filterLabel }}
+            </label>
+            <input
+                id='livewx-filter'
+                class='form-range mb-3'
+                type='range'
+                min='0'
+                step='1'
+                :max='filterCeiling'
+                :value='state.filter'
+                @input='onFilter'
+                @wheel.prevent='onFilterWheel'
+            >
+        </template>
+
+        <template v-if='frames.length'>
+            <h4 class='subheader'>
+                Replay
+            </h4>
+            <div class='d-flex gap-2 mb-2'>
+                <button
+                    class='btn btn-sm btn-outline-secondary'
+                    type='button'
+                    @click='onPlay'
+                >
+                    {{ state.playing ? 'Pause' : 'Play' }}
+                </button>
+                <button
+                    class='btn btn-sm btn-outline-secondary'
+                    type='button'
+                    @click='onLive'
+                >
+                    Live
+                </button>
+            </div>
+            <div class='replay-wrap mb-3'>
                 <input
-                    id='livewx-filter'
-                    class='form-range mb-3'
+                    class='form-range mb-0'
                     type='range'
                     min='0'
                     step='1'
-                    :max='filterCeiling'
-                    :value='state.filter'
-                    @input='onFilter'
-                    @wheel.prevent='onFilterWheel'
+                    :max='replaySliderMax'
+                    :value='replaySliderValue'
+                    @input='onReplay'
+                    @wheel.prevent='onReplayWheel'
                 >
-            </template>
-
-            <template v-if='frames.length'>
-                <h4 class='subheader'>
-                    Replay
-                </h4>
-                <div class='d-flex gap-2 mb-2'>
-                    <button
-                        class='btn btn-sm btn-outline-secondary'
-                        type='button'
-                        @click='onPlay'
+                <div class='replay-ticks'>
+                    <span
+                        v-for='tick in replayTicks'
+                        :key='tick.key'
+                        class='replay-tick'
+                        :class='{
+                            "replay-tick-start": tick.align === "start",
+                            "replay-tick-end": tick.align === "end",
+                        }'
+                        :style='{ left: tick.pct + "%" }'
                     >
-                        {{ state.playing ? 'Pause' : 'Play' }}
-                    </button>
-                    <button
-                        class='btn btn-sm btn-outline-secondary'
-                        type='button'
-                        @click='onLive'
-                    >
-                        Live
-                    </button>
+                        {{ tick.label }}
+                    </span>
                 </div>
-                <div class='replay-wrap mb-3'>
-                    <input
-                        class='form-range mb-0'
-                        type='range'
-                        min='0'
-                        step='1'
-                        :max='replaySliderMax'
-                        :value='replaySliderValue'
-                        @input='onReplay'
-                        @wheel.prevent='onReplayWheel'
-                    >
-                    <div class='replay-ticks'>
-                        <span
-                            v-for='tick in replayTicks'
-                            :key='tick.key'
-                            class='replay-tick'
-                            :class='{
-                                "replay-tick-start": tick.align === "start",
-                                "replay-tick-end": tick.align === "end",
-                            }'
-                            :style='{ left: tick.pct + "%" }'
-                        >
-                            {{ tick.label }}
-                        </span>
-                    </div>
-                    <p
-                        v-if='isLive'
-                        class='small mb-0 mt-2'
-                    >
-                        Live Image · {{ liveAgeText }}
-                    </p>
-                    <p
-                        v-else
-                        class='text-secondary small mb-0 mt-2'
-                    >
-                        {{ replayCaption }}
-                    </p>
-                </div>
-            </template>
+                <p
+                    v-if='isLive'
+                    class='small mb-0 mt-2'
+                >
+                    Live · {{ liveAgeText }}
+                </p>
+                <p
+                    v-else
+                    class='text-secondary small mb-0 mt-2'
+                >
+                    {{ replayCaption }}
+                </p>
+            </div>
         </template>
 
         <p
@@ -379,13 +279,11 @@ import {
     togglePlay,
     visibleProducts,
 } from './radar.ts';
-import { lightning } from '../lightning/lightning.ts';
 import { groupedOptions, availableTilts, filterMax, filterUnit, tiltLabel } from './products.ts';
 import { findSite, isMosaic, searchSites, siteLabel } from './sites.ts';
 import {
     persist,
     setFilter,
-    setLightningStaleSec,
     setOpacity,
     setProduct,
     setSite,
@@ -456,12 +354,12 @@ const replaySliderValue = computed(() => (
 ));
 const liveAgeText = computed(() => {
     void nowMs.value;
-    if (liveValidAt.value == null) return 'Age Unknown';
+    if (liveValidAt.value == null) return 'Age unknown';
     return ageLabel(liveValidAt.value, nowMs.value);
 });
 const replayCaption = computed(() => {
     void nowMs.value;
-    if (!frames.value.length) return 'No Archive Frames For This Product';
+    if (!frames.value.length) return 'No frames';
     if (isLive.value) return liveValidAt.value != null
         ? `Live · ${ageLabel(liveValidAt.value, nowMs.value)}`
         : 'Live';
@@ -503,12 +401,6 @@ const replayTicks = computed(() => {
     push(maxIdx, 'Live', 'end');
     return ticks;
 });
-
-function onOverlayToggle(ev: Event): void {
-    const on = (ev.target as HTMLInputElement).checked;
-    if (!on) closeSiteMenu();
-    void setLayerEnabled('radar_overlay', on);
-}
 
 function wheelStep(ev: WheelEvent): number {
     return ev.deltaY < 0 ? 1 : -1;
@@ -612,33 +504,11 @@ function onFilterWheel(ev: WheelEvent): void {
     applyFilter();
 }
 
-function onAlertsToggle(ev: Event): void {
-    void setLayerEnabled('nws_wwa', (ev.target as HTMLInputElement).checked);
-}
-
-function onLightningToggle(ev: Event): void {
-    void setLayerEnabled('blitzortung', (ev.target as HTMLInputElement).checked);
-}
-
 function onProvider(ev: Event): void {
     state.radarProvider = (ev.target as HTMLSelectElement).value === 'auto' ? 'auto' : 'iem';
     persist();
     void applyRadarSettings();
 }
-
-function onLightningLifetime(ev: Event): void {
-    setLightningStaleSec(Number((ev.target as HTMLInputElement).value));
-}
-
-function onLightningLifetimeWheel(ev: WheelEvent): void {
-    setLightningStaleSec(state.lightningStaleSec + wheelStep(ev) * 15);
-}
-
-const lightningStatus = computed(() => {
-    if (lightning.connected) return 'Connected';
-    if (lightning.error) return lightning.error;
-    return 'Connecting…';
-});
 
 function onPlay(): void {
     togglePlay();

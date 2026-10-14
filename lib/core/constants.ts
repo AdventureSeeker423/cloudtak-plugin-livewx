@@ -49,31 +49,5 @@ export const TDWR_RANGE_KM = 90;
 /** Same-origin path for Blitzortung relay (CloudTAK server plugin). */
 export const BLITZ_RELAY_PATH = '/api/livewx/lightning';
 
-export type AppPageId =
-    | 'forecast'
-    | 'layers'
-    | 'radar'
-    | 'spot'
-    | 'zones'
-    | 'sawti'
-    | 'fire_danger'
-    | 'stations'
-    | 'gauges'
-    | 'buoys'
-    | 'storm_reports'
-    | 'rain_gauges';
-
-export const PAGE_LABELS: Record<AppPageId, string> = {
-    forecast: 'Forecast',
-    layers: 'Layers',
-    radar: 'Radar',
-    spot: 'Spot',
-    zones: 'Fire Weather Zones',
-    sawti: 'SAWTI',
-    fire_danger: 'Fire Danger',
-    stations: 'Weather Stations',
-    gauges: 'River Gauges',
-    buoys: 'Buoys',
-    storm_reports: 'Storm Reports',
-    rain_gauges: 'Rain Gauges',
-};
+/** In-plugin views: master home + detail screens with Back. */
+export type AppPageId = 'home' | 'forecast' | 'radar';

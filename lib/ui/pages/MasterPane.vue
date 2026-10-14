@@ -1,0 +1,393 @@
+<template>
+    <div class='master'>
+        <section class='sec'>
+            <div class='sec-head'>
+                <h3 class='sec-title'>
+                    Forecast
+                </h3>
+                <button
+                    class='btn btn-sm btn-outline-secondary'
+                    type='button'
+                    @click='go("forecast")'
+                >
+                    Open
+                </button>
+            </div>
+            <p class='sec-meta mb-0'>
+                {{ forecastLine }}
+            </p>
+        </section>
+
+        <section class='sec'>
+            <div class='sec-head'>
+                <div class='form-check form-switch mb-0'>
+                    <input
+                        id='m-radar'
+                        class='form-check-input'
+                        type='checkbox'
+                        :checked='enabled.radar_overlay'
+                        :disabled='Boolean(layerUi.busy.radar_overlay)'
+                        @change='toggle("radar_overlay", $event)'
+                    >
+                    <label
+                        class='form-check-label'
+                        for='m-radar'
+                    >Radar</label>
+                </div>
+                <button
+                    class='btn btn-sm btn-outline-secondary'
+                    type='button'
+                    @click='go("radar")'
+                >
+                    Settings
+                </button>
+            </div>
+            <div
+                v-if='enabled.radar_overlay'
+                class='opacity-row'
+            >
+                <label
+                    class='form-label small mb-1'
+                    for='m-op-radar_overlay'
+                >Opacity {{ pct('radar_overlay') }}%</label>
+                <input
+                    id='m-op-radar_overlay'
+                    class='form-range mb-0'
+                    type='range'
+                    min='0'
+                    max='100'
+                    step='1'
+                    :value='pct("radar_overlay")'
+                    @input='onOpacity("radar_overlay", $event)'
+                >
+            </div>
+        </section>
+
+        <section class='sec'>
+            <h3 class='sec-title mb-2'>
+                Wind
+            </h3>
+            <div
+                v-for='row in windRows'
+                :key='row.id'
+                class='layer-row mb-2'
+            >
+                <div class='form-check form-switch mb-0'>
+                    <input
+                        :id='`m-${row.id}`'
+                        class='form-check-input'
+                        type='checkbox'
+                        :checked='enabled[row.id]'
+                        :disabled='Boolean(layerUi.busy[row.id])'
+                        @change='toggle(row.id, $event)'
+                    >
+                    <label
+                        class='form-check-label'
+                        :for='`m-${row.id}`'
+                    >{{ row.label }}</label>
+                </div>
+                <div
+                    v-if='enabled[row.id]'
+                    class='opacity-row'
+                >
+                    <label
+                        class='form-label small mb-1'
+                        :for='`m-op-${row.id}`'
+                    >Opacity {{ pct(row.id) }}%</label>
+                    <input
+                        :id='`m-op-${row.id}`'
+                        class='form-range mb-0'
+                        type='range'
+                        min='0'
+                        max='100'
+                        step='1'
+                        :value='pct(row.id)'
+                        @input='onOpacity(row.id, $event)'
+                    >
+                </div>
+            </div>
+        </section>
+
+        <section class='sec'>
+            <h3 class='sec-title mb-2'>
+                Watches &amp; Warnings
+            </h3>
+            <div class='form-check form-switch mb-1'>
+                <input
+                    id='m-wwa'
+                    class='form-check-input'
+                    type='checkbox'
+                    :checked='enabled.nws_wwa'
+                    :disabled='Boolean(layerUi.busy.nws_wwa)'
+                    @change='toggle("nws_wwa", $event)'
+                >
+                <label
+                    class='form-check-label'
+                    for='m-wwa'
+                >WWA</label>
+            </div>
+            <p
+                v-if='enabled.nws_wwa'
+                class='sec-meta mb-0'
+            >
+                {{ state.alertCount }} active
+            </p>
+        </section>
+
+        <section class='sec'>
+            <h3 class='sec-title mb-2'>
+                Lightning
+            </h3>
+            <div class='form-check form-switch mb-2'>
+                <input
+                    id='m-ltng'
+                    class='form-check-input'
+                    type='checkbox'
+                    :checked='enabled.blitzortung'
+                    :disabled='Boolean(layerUi.busy.blitzortung)'
+                    @change='toggle("blitzortung", $event)'
+                >
+                <label
+                    class='form-check-label'
+                    for='m-ltng'
+                >Lightning</label>
+            </div>
+            <template v-if='enabled.blitzortung'>
+                <label
+                    class='form-label small mb-1'
+                    for='m-ltng-life'
+                >Lifetime {{ state.lightningStaleSec }}s</label>
+                <input
+                    id='m-ltng-life'
+                    class='form-range mb-2'
+                    type='range'
+                    min='15'
+                    max='600'
+                    step='15'
+                    :value='state.lightningStaleSec'
+                    @input='onLifetime'
+                >
+            </template>
+            <div class='layer-row'>
+                <div class='form-check form-switch mb-0'>
+                    <input
+                        id='m-density'
+                        class='form-check-input'
+                        type='checkbox'
+                        :checked='enabled.lightning_density'
+                        :disabled='Boolean(layerUi.busy.lightning_density)'
+                        @change='toggle("lightning_density", $event)'
+                    >
+                    <label
+                        class='form-check-label'
+                        for='m-density'
+                    >Density</label>
+                </div>
+                <div
+                    v-if='enabled.lightning_density'
+                    class='opacity-row'
+                >
+                    <label
+                        class='form-label small mb-1'
+                        for='m-op-lightning_density'
+                    >Opacity {{ pct('lightning_density') }}%</label>
+                    <input
+                        id='m-op-lightning_density'
+                        class='form-range mb-0'
+                        type='range'
+                        min='0'
+                        max='100'
+                        step='1'
+                        :value='pct("lightning_density")'
+                        @input='onOpacity("lightning_density", $event)'
+                    >
+                </div>
+            </div>
+        </section>
+
+        <section class='sec'>
+            <button
+                class='btn btn-sm btn-link px-0 sec-title text-decoration-none'
+                type='button'
+                @click='moreOpen = !moreOpen'
+            >
+                More {{ moreOpen ? '▾' : '▸' }}
+            </button>
+            <div v-if='moreOpen'>
+                <div
+                    v-for='row in moreRows'
+                    :key='row.id'
+                    class='layer-row mb-2'
+                >
+                    <div class='form-check form-switch mb-0'>
+                        <input
+                            :id='`m-${row.id}`'
+                            class='form-check-input'
+                            type='checkbox'
+                            :checked='enabled[row.id]'
+                            :disabled='Boolean(layerUi.busy[row.id])'
+                            @change='toggle(row.id, $event)'
+                        >
+                        <label
+                            class='form-check-label'
+                            :for='`m-${row.id}`'
+                        >{{ row.label }}</label>
+                    </div>
+                    <div
+                        v-if='enabled[row.id] && row.opacity'
+                        class='opacity-row'
+                    >
+                        <label
+                            class='form-label small mb-1'
+                            :for='`m-op-${row.id}`'
+                        >Opacity {{ pct(row.id) }}%</label>
+                        <input
+                            :id='`m-op-${row.id}`'
+                            class='form-range mb-0'
+                            type='range'
+                            min='0'
+                            max='100'
+                            step='1'
+                            :value='pct(row.id)'
+                            @input='onOpacity(row.id, $event)'
+                        >
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+</template>
+
+<script setup lang='ts'>
+import { computed, onMounted, ref } from 'vue';
+import { setLightningStaleSec, setPage, state } from '../../core/state.ts';
+import { forecast } from '../../forecast/engine.ts';
+import { listSources } from '../../forecast/sources.ts';
+import {
+    getLayerOpacity,
+    layerUi,
+    refreshAllStatuses,
+    setLayerEnabled,
+    setLayerOpacity,
+} from '../../layers/registry.ts';
+
+const moreOpen = ref(false);
+
+const windRows = [
+    { id: 'satellite', label: 'Satellite' },
+    { id: 'rain_forecast', label: 'Rain 1h' },
+    { id: 'wind_field', label: 'Water vapor' },
+];
+
+const moreRows = [
+    { id: 'fire_outlook', label: 'Fire outlook', opacity: false },
+    { id: 'fw_zones', label: 'Fire zones', opacity: false },
+    { id: 'smoke', label: 'Smoke', opacity: true },
+    { id: 'air_quality', label: 'Air quality', opacity: false },
+    { id: 'flash_flood', label: 'Flash flood', opacity: false },
+    { id: 'river_gauges', label: 'River gauges', opacity: false },
+    { id: 'rain_totals', label: 'Rain 24h', opacity: true },
+    { id: 'buoys', label: 'Buoys', opacity: false },
+    { id: 'hurricanes', label: 'Hurricanes', opacity: false },
+    { id: 'avalanche', label: 'Avalanche', opacity: false },
+    { id: 'snow_depth', label: 'Snow depth', opacity: true },
+    { id: 'earthquakes', label: 'Earthquakes', opacity: false },
+];
+
+const allIds = [
+    'radar_overlay',
+    'nws_wwa',
+    'blitzortung',
+    'lightning_density',
+    ...windRows.map((r) => r.id),
+    ...moreRows.map((r) => r.id),
+];
+
+/** Reactive enabled map (layers + legacy bridge flags). */
+const enabled = computed(() => {
+    const out: Record<string, boolean> = {};
+    for (const id of allIds) {
+        out[id] = Boolean(state.layers[id]?.enabled);
+    }
+    if (state.overlayEnabled) out.radar_overlay = true;
+    if (state.alertsEnabled) out.nws_wwa = true;
+    if (state.lightningEnabled) out.blitzortung = true;
+    if (state.densityLightningEnabled) out.lightning_density = true;
+    return out;
+});
+
+/** Track opacity values reactively (radar + per-layer). */
+const opacities = computed(() => {
+    void state.opacity;
+    void state.layers;
+    const out: Record<string, number> = {};
+    for (const id of allIds) {
+        out[id] = getLayerOpacity(id);
+    }
+    return out;
+});
+
+const forecastLine = computed(() => {
+    const src = listSources().find((s) => s.sourceId === state.forecastSourceId);
+    const name = src?.displayName ?? state.forecastSourceId;
+    const place = state.placeName
+        || (state.queryLat != null ? `${state.queryLat}, ${state.queryLon}` : '—');
+    if (forecast.error) return `${name} · ${forecast.error}`;
+    return `${name} · ${place}`;
+});
+
+onMounted(() => refreshAllStatuses());
+
+function pct(id: string): number {
+    return Math.round((opacities.value[id] ?? 0.7) * 100);
+}
+
+function toggle(id: string, ev: Event): void {
+    void setLayerEnabled(id, (ev.target as HTMLInputElement).checked);
+}
+
+function onOpacity(id: string, ev: Event): void {
+    setLayerOpacity(id, Number((ev.target as HTMLInputElement).value) / 100);
+}
+
+function go(page: 'forecast' | 'radar'): void {
+    setPage(page);
+}
+
+function onLifetime(ev: Event): void {
+    setLightningStaleSec(Number((ev.target as HTMLInputElement).value));
+}
+</script>
+
+<style scoped>
+.sec {
+    border-bottom: 1px solid var(--livewx-border, var(--tblr-border-color, #333));
+    padding: 0.75rem 0;
+}
+.sec-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.25rem;
+}
+.sec-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin: 0;
+    opacity: 0.85;
+}
+.sec-meta {
+    font-size: 0.8rem;
+    color: var(--tblr-secondary, inherit);
+}
+.opacity-row {
+    margin-top: 0.35rem;
+    padding-left: 0.1rem;
+}
+.layer-row + .layer-row {
+    margin-top: 0.15rem;
+}
+</style>

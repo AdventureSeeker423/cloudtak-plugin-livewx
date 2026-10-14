@@ -93,7 +93,7 @@
             v-else
             class='text-secondary small'
         >
-            Area Forecast Discussion unavailable for this point/source.
+            AFD unavailable.
         </p>
     </div>
 </template>
