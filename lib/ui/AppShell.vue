@@ -2,7 +2,7 @@
     <div class='livewx-app'>
         <div
             v-if='state.page !== "home"'
-            class='livewx-chrome mb-2'
+            class='livewx-chrome'
         >
             <button
                 class='btn btn-sm btn-outline-secondary'
@@ -39,5 +39,6 @@ defineProps<{ api: PluginAPI }>();
 .livewx-chrome {
     border-bottom: 1px solid var(--livewx-border, var(--tblr-border-color, #333));
     padding-bottom: 0.5rem;
+    margin-bottom: 0.75rem;
 }
 </style>

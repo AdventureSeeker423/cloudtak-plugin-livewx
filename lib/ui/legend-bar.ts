@@ -31,6 +31,7 @@ const MENU_ORDER = [
     'rain_totals',
     'wind_field',
     'surface_wind',
+    'lightning_density',
     'fire_outlook',
     'smoke',
     'air_quality',
@@ -89,7 +90,7 @@ const LEGENDS: Record<string, LegendStrip> = {
     },
     rain_12h: {
         id: 'rain_12h',
-        label: 'Rain (12 Hours)',
+        label: 'Rain Forecast (12 Hours)',
         unit: (u) => (u === 'us' ? 'in' : 'mm'),
         colors: RAIN_COLORS,
         min: (u) => (u === 'us' ? '0.01' : '0.2'),
@@ -98,7 +99,7 @@ const LEGENDS: Record<string, LegendStrip> = {
     },
     rain_totals: {
         id: 'rain_totals',
-        label: 'Rain (24 Hours)',
+        label: 'Rain Forecast (24 Hours)',
         unit: (u) => (u === 'us' ? 'in' : 'mm'),
         colors: RAIN_COLORS,
         min: (u) => (u === 'us' ? '0.01' : '0.2'),
@@ -124,6 +125,18 @@ const LEGENDS: Record<string, LegendStrip> = {
         min: '0',
         mid: (u) => (u === 'metric' ? '12' : u === 'aviation' ? '25' : '25'),
         max: (u) => (u === 'metric' ? '18+' : u === 'aviation' ? '40+' : '40+'),
+    },
+    /** nowCOAST LDN strike density (approx. yellow→red ramp used over sat imagery). */
+    lightning_density: {
+        id: 'lightning_density',
+        label: 'Lightning Density',
+        unit: 'strikes',
+        colors: [
+            '#2b1055', '#4b2bb5', '#1e90ff', '#00e5c8', '#ffff33', '#ff9900', '#ff2200', '#ffffff',
+        ],
+        min: 'low',
+        mid: 'mod',
+        max: 'high',
     },
     fire_outlook: {
         id: 'fire_outlook',
@@ -189,6 +202,9 @@ function resolve(v: LabelFn | undefined, units: UnitSystem): string {
 function layerOn(id: string): boolean {
     if (id === 'radar_overlay') {
         return state.overlayEnabled || Boolean(state.layers.radar_overlay?.enabled);
+    }
+    if (id === 'lightning_density') {
+        return state.densityLightningEnabled || Boolean(state.layers.lightning_density?.enabled);
     }
     return Boolean(state.layers[id]?.enabled);
 }
@@ -269,7 +285,7 @@ function ensureStyle(): void {
 
 function paint(): void {
     if (!root) return;
-    const strips = activeStrips();
+    const strips = state.legendsVisible ? activeStrips() : [];
     if (!strips.length) {
         root.hidden = true;
         root.replaceChildren();
@@ -350,7 +366,9 @@ export function attachLegendBar(map?: LiveWxMap | null): void {
     if (!stopWatch) {
         stopWatch = watch(
             () => [
+                state.legendsVisible,
                 state.overlayEnabled,
+                state.densityLightningEnabled,
                 state.productId,
                 state.units,
                 state.layers,

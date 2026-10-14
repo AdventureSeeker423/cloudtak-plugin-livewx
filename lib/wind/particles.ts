@@ -7,7 +7,7 @@ import { mapOf } from '../core/map-host.ts';
 import { getLayerOpacity, refreshStatus, registerLayer } from '../layers/registry.ts';
 import { boundsKey, fetchWindGrid, sampleGrid, type WindGrid } from './grid.ts';
 
-const PARTICLES = 900;
+const PARTICLES = 1500;
 const TRAIL = 28;
 const MAX_AGE = 220;
 const PX_PER_FRAME_AT_6MS = 1.7;
@@ -56,10 +56,38 @@ function bandIndex(ms: number): number {
     return BAND_MAX_MS.length;
 }
 
+const WIND_STYLE_ID = 'livewx-wind-canvas-style';
+
+/**
+ * Only the MapLibre canvas container — never the outer map root / page chrome.
+ * Keeps streaks under CloudTAK sidebar + plugin panes (controls sit at z-index 2).
+ */
 function canvasHost(map: LiveWxMap): HTMLElement | null {
-    const fromApi = map.getCanvasContainer?.() || map.getCanvas?.()?.parentElement || map.getContainer?.();
+    const gl = map.getCanvas?.();
+    const fromGl = gl?.parentElement;
+    if (fromGl?.classList?.contains('maplibregl-canvas-container')) return fromGl;
+    const fromApi = map.getCanvasContainer?.();
     if (fromApi) return fromApi;
-    return document.querySelector('.maplibregl-canvas-container') as HTMLElement | null;
+    if (fromGl) return fromGl;
+    return null;
+}
+
+function ensureWindStyle(): void {
+    if (document.getElementById(WIND_STYLE_ID)) return;
+    const style = document.createElement('style');
+    style.id = WIND_STYLE_ID;
+    style.textContent = `
+.maplibregl-canvas-container > canvas.livewx-wind-canvas {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    pointer-events: none !important;
+    /* Below .maplibregl-control-container (z-index: 2) and page/sidebar chrome */
+    z-index: 1 !important;
+}
+`;
+    document.head.appendChild(style);
 }
 
 function ensureCanvas(map: LiveWxMap): void {
@@ -72,12 +100,10 @@ function ensureCanvas(map: LiveWxMap): void {
         statusText = 'Map canvas not ready';
         return;
     }
-    if (getComputedStyle(host).position === 'static') {
-        host.style.position = 'relative';
-    }
+    ensureWindStyle();
     canvas = document.createElement('canvas');
     canvas.className = 'livewx-wind-canvas';
-    canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:5;';
+    // Sit with the WebGL canvas only — not the outer map root (avoids covering UI).
     host.appendChild(canvas);
     ctx = canvas.getContext('2d');
     syncSize(map);
@@ -85,10 +111,11 @@ function ensureCanvas(map: LiveWxMap): void {
 
 function syncSize(map: LiveWxMap): void {
     if (!canvas) return;
+    const gl = map.getCanvas?.();
     const host = canvas.parentElement || canvasHost(map);
     if (!host) return;
-    const w = host.clientWidth || map.getCanvas?.()?.clientWidth || 1;
-    const h = host.clientHeight || map.getCanvas?.()?.clientHeight || 1;
+    const w = gl?.clientWidth || host.clientWidth || 1;
+    const h = gl?.clientHeight || host.clientHeight || 1;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const tw = Math.max(1, Math.round(w * dpr));
     const th = Math.max(1, Math.round(h * dpr));

@@ -314,8 +314,8 @@ const RAIN_LAYER_IDS = ['rain_forecast', 'rain_12h', 'rain_totals'] as const;
 const radarRows = [
     { id: 'satellite', label: 'Infrared Cloud Tops' },
     { id: 'rain_forecast', label: 'Rain Forecast (1 Hour)' },
-    { id: 'rain_12h', label: 'Rain (12 Hours)' },
-    { id: 'rain_totals', label: 'Rain (24 Hours)' },
+    { id: 'rain_12h', label: 'Rain Forecast (12 Hours)' },
+    { id: 'rain_totals', label: 'Rain Forecast (24 Hours)' },
     { id: 'wind_field', label: 'Water Vapor' },
 ];
 
@@ -414,9 +414,15 @@ function onLifetime(ev: Event): void {
 </script>
 
 <style scoped>
+.master {
+    margin-top: 0;
+}
 .sec {
     border-bottom: 1px solid var(--livewx-border, var(--tblr-border-color, #333));
     padding: 0.75rem 0;
+}
+.sec:first-child {
+    padding-top: 0;
 }
 .sec-head {
     display: flex;

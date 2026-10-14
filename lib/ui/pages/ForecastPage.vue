@@ -1,7 +1,7 @@
 <template>
-    <div>
-        <div class='mb-3'>
-            <div class='d-flex flex-wrap gap-2 align-items-center mb-2'>
+    <div class='forecast'>
+        <section class='fc-block'>
+            <div class='fc-loc-actions'>
                 <button
                     class='btn btn-sm'
                     :class='pointUi.picking ? "btn-primary" : "btn-outline-primary"'
@@ -21,84 +21,85 @@
             </div>
             <p
                 v-if='pointUi.picking'
-                class='text-secondary small mb-2'
+                class='fc-hint'
             >
                 Click the map to set the forecast point.
             </p>
-            <p class='text-secondary small mb-0'>
+            <p class='fc-place'>
                 <template v-if='locationLine'>{{ locationLine }}</template>
                 <template v-else>No location set</template>
             </p>
-        </div>
+        </section>
 
-        <div class='d-flex flex-wrap gap-2 align-items-center mb-3'>
-            <label
-                class='form-label mb-0 small'
-                for='livewx-forecast-units'
-            >
-                Units
-            </label>
-            <select
-                id='livewx-forecast-units'
-                class='form-select form-select-sm'
-                style='max-width: 7rem'
-                :value='state.units'
-                @change='onUnits'
-            >
-                <option value='us'>
-                    US
-                </option>
-                <option value='metric'>
-                    Metric
-                </option>
-                <option value='aviation'>
-                    Avn
-                </option>
-            </select>
-            <label
-                class='form-label mb-0 small'
-                for='livewx-forecast-source'
-            >
-                Source
-            </label>
-            <select
-                id='livewx-forecast-source'
-                class='form-select form-select-sm'
-                style='max-width: 12rem'
-                :value='state.forecastSourceId'
-                @change='onSource'
-            >
-                <option
-                    v-for='s in sources'
-                    :key='s.sourceId'
-                    :value='s.sourceId'
+        <section class='fc-block'>
+            <div class='fc-fields'>
+                <div class='fc-field'>
+                    <label
+                        class='fc-label'
+                        for='livewx-forecast-units'
+                    >Units</label>
+                    <select
+                        id='livewx-forecast-units'
+                        class='form-select form-select-sm'
+                        :value='state.units'
+                        @change='onUnits'
+                    >
+                        <option value='us'>
+                            US
+                        </option>
+                        <option value='metric'>
+                            Metric
+                        </option>
+                        <option value='aviation'>
+                            Avn
+                        </option>
+                    </select>
+                </div>
+                <div class='fc-field fc-field-grow'>
+                    <label
+                        class='fc-label'
+                        for='livewx-forecast-source'
+                    >Source</label>
+                    <select
+                        id='livewx-forecast-source'
+                        class='form-select form-select-sm'
+                        :value='state.forecastSourceId'
+                        @change='onSource'
+                    >
+                        <option
+                            v-for='s in sources'
+                            :key='s.sourceId'
+                            :value='s.sourceId'
+                        >
+                            {{ s.displayName }}
+                        </option>
+                    </select>
+                </div>
+            </div>
+            <div class='fc-refresh'>
+                <button
+                    class='btn btn-sm btn-outline-secondary'
+                    type='button'
+                    :disabled='state.queryLat == null'
+                    @click='reload'
                 >
-                    {{ s.displayName }}
-                </option>
-            </select>
-            <button
-                class='btn btn-sm btn-outline-secondary'
-                type='button'
-                :disabled='state.queryLat == null'
-                @click='reload'
+                    Refresh
+                </button>
+                <span class='fc-age'>{{ forecastAge() }}</span>
+            </div>
+            <p
+                v-if='forecast.error'
+                class='text-danger small mb-0'
             >
-                Refresh
-            </button>
-            <span class='text-secondary small'>{{ forecastAge() }}</span>
-        </div>
-
-        <p
-            v-if='forecast.error'
-            class='text-danger small'
-        >
-            {{ forecast.error }}
-        </p>
-        <p
-            v-if='forecast.attribution'
-            class='text-secondary small mb-3'
-        >
-            {{ forecast.attribution }}
-        </p>
+                {{ forecast.error }}
+            </p>
+            <p
+                v-if='forecast.attribution'
+                class='fc-attr'
+            >
+                {{ forecast.attribution }}
+            </p>
+        </section>
 
         <template v-if='state.queryLat != null'>
             <h4 class='mb-2'>
@@ -244,12 +245,19 @@ const hourlyRows = computed(() => {
     const temp = readingByLabel('temperature', 'temperature_2m');
     const wind = readingByLabel('windSpeed', 'wind_speed', 'twentyFootWindSpeed');
     const pop = readingByLabel('probabilityOfPrecipitation', 'precipitation_probability');
-    const times = temp?.series?.slice(0, 36) ?? [];
-    return times.map((pt, i) => {
+    // Current hour and forward only — providers often include past hours in the series.
+    const hourStart = new Date();
+    hourStart.setMinutes(0, 0, 0);
+    const fromMs = hourStart.getTime();
+    const future = (temp?.series ?? []).filter((pt) => {
+        const ms = new Date(pt.t).getTime();
+        return Number.isFinite(ms) && ms >= fromMs;
+    }).slice(0, 36);
+    return future.map((pt) => {
         const t = convertTemp(pt.v ?? 0, state.units);
-        const w = wind?.series?.[i]?.v;
-        const ws = w != null ? convertSpeed(w, state.units) : null;
-        const p = pop?.series?.[i]?.v;
+        const wi = wind?.series?.find((p) => p.t === pt.t)?.v;
+        const ws = wi != null ? convertSpeed(wi, state.units) : null;
+        const p = pop?.series?.find((sp) => sp.t === pt.t)?.v;
         return {
             t: pt.t,
             time: new Date(pt.t).toLocaleString(undefined, { weekday: 'short', hour: 'numeric' }),
@@ -295,6 +303,70 @@ function reload(): void {
 </script>
 
 <style scoped>
+.forecast {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+.fc-block {
+    padding: 0 0 0.85rem;
+    margin-bottom: 0.85rem;
+    border-bottom: 1px solid var(--livewx-border, var(--tblr-border-color, #333));
+}
+.fc-block:last-of-type {
+    border-bottom: none;
+}
+.fc-loc-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+}
+.fc-hint {
+    margin: 0.4rem 0 0;
+    font-size: 0.8rem;
+    color: var(--tblr-secondary, inherit);
+}
+.fc-place {
+    margin: 0.4rem 0 0;
+    font-size: 0.85rem;
+    color: var(--tblr-secondary, inherit);
+}
+.fc-fields {
+    display: grid;
+    grid-template-columns: 6.5rem minmax(0, 1fr);
+    gap: 0.65rem 0.75rem;
+    align-items: end;
+}
+.fc-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+}
+.fc-label {
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.85;
+}
+.fc-refresh {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 0.65rem;
+}
+.fc-age {
+    font-size: 0.8rem;
+    color: var(--tblr-secondary, inherit);
+}
+.fc-attr {
+    margin: 0.55rem 0 0;
+    font-size: 0.8rem;
+    color: var(--tblr-secondary, inherit);
+}
 .livewx-afd {
     white-space: pre-wrap;
     max-height: 16rem;

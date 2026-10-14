@@ -102,7 +102,7 @@ export function registerCatalogLayers(): void {
     registerWmsLayer({
         id: 'rain_12h',
         group: 'radar',
-        label: 'Rain (12 Hours)',
+        label: 'Rain Forecast (12 Hours)',
         description: 'MRMS 12-hour precipitation',
         hosts: ['mapservices.weather.noaa.gov'],
         sends: 'Tiles',
@@ -119,7 +119,7 @@ export function registerCatalogLayers(): void {
     registerWmsLayer({
         id: 'rain_totals',
         group: 'radar',
-        label: 'Rain (24 Hours)',
+        label: 'Rain Forecast (24 Hours)',
         description: 'MRMS 24-hour precipitation',
         hosts: ['mesonet.agron.iastate.edu'],
         sends: 'Tiles',

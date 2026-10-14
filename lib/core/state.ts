@@ -55,6 +55,8 @@ export interface PersistedSettings {
     densityLightningEnabled: boolean;
     radarProvider: 'iem' | 'auto';
     consentedSources: string[];
+    /** Bottom map legend strips. */
+    legendsVisible: boolean;
 }
 
 export interface LiveWxState extends PersistedSettings {
@@ -93,6 +95,7 @@ function load(): PersistedSettings {
         densityLightningEnabled: false,
         radarProvider: 'iem',
         consentedSources: [],
+        legendsVisible: true,
     };
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
@@ -135,6 +138,8 @@ function load(): PersistedSettings {
             consentedSources: Array.isArray(parsed.consentedSources)
                 ? parsed.consentedSources as string[]
                 : [],
+            // Default on when key missing (first load after this feature).
+            legendsVisible: parsed.legendsVisible === undefined ? true : Boolean(parsed.legendsVisible),
         };
     } catch {
         return defaults;
@@ -204,7 +209,17 @@ function payload(): PersistedSettings {
         densityLightningEnabled: state.densityLightningEnabled,
         radarProvider: state.radarProvider,
         consentedSources: state.consentedSources,
+        legendsVisible: state.legendsVisible,
     };
+}
+
+export function setLegendsVisible(visible: boolean): void {
+    state.legendsVisible = visible;
+    persist();
+}
+
+export function toggleLegendsVisible(): void {
+    setLegendsVisible(!state.legendsVisible);
 }
 
 export function persist(): void {

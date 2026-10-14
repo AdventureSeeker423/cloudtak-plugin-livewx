@@ -14,8 +14,15 @@
                 <h3 class='card-title mb-0'>
                     {{ name }}
                 </h3>
-                <div class='ms-auto d-flex align-items-center'>
+                <div class='ms-auto d-flex align-items-center gap-2'>
                     <slot name='buttons' />
+                    <button
+                        class='btn btn-sm btn-outline-secondary livewx-legends-btn'
+                        type='button'
+                        @click='toggleLegendsVisible()'
+                    >
+                        {{ state.legendsVisible ? 'Hide Legends' : 'Show Legends' }}
+                    </button>
                     <TablerIconButton
                         v-if='backType === "close"'
                         title='Close'
@@ -67,6 +74,7 @@ import {
 
 import { useRouter } from 'vue-router';
 import { computed, onMounted } from 'vue';
+import { state, toggleLegendsVisible } from '../core/state.ts';
 import { syncSidebarTheme } from '../core/theme.ts';
 
 const router = useRouter();
@@ -136,10 +144,16 @@ onMounted(() => {
 }
 .livewx-shell :deep(.card-body) {
     background: transparent;
+    padding-top: 0.75rem;
 }
 .livewx-shell :deep(.card-title),
 .livewx-shell :deep(.form-label),
 .livewx-shell :deep(.form-check-label) {
     color: inherit;
+}
+.livewx-legends-btn {
+    white-space: nowrap;
+    font-size: 0.75rem;
+    padding: 0.15rem 0.5rem;
 }
 </style>
