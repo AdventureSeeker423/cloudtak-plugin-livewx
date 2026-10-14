@@ -222,6 +222,8 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         description: 'Recent Blitzortung strikes via CloudTAK relay (CC BY-SA 4.0). Not for warnings.',
         query: Type.Object({
             since: Type.Optional(Type.Integer()),
+            // Same pattern as /api/fonts — MapLibre / simple fetch may pass token in query.
+            token: Type.Optional(Type.String()),
         }),
         res: Type.Object({
             connected: Type.Boolean(),
@@ -235,7 +237,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         }),
     }, async (req, res) => {
         try {
-            await Auth.as_user(config, req);
+            await Auth.as_user(config, req, { token: true });
             await ensureUpstream();
             prune();
             const since = Number(req.query.since) || 0;
@@ -257,10 +259,12 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         description: 'Allowlisted HTTPS proxy for weather hosts blocked by browser CORS.',
         query: Type.Object({
             url: Type.String(),
+            // Required for MapLibre raster tiles (cannot set Authorization headers).
+            token: Type.Optional(Type.String()),
         }),
     }, async (req, res) => {
         try {
-            await Auth.as_user(config, req);
+            await Auth.as_user(config, req, { token: true });
             let target: URL;
             try {
                 target = new URL(String(req.query.url));
@@ -278,6 +282,8 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             });
             const ct = upstreamRes.headers.get('content-type') || 'application/octet-stream';
             res.header('Content-Type', ct);
+            // Avoid caching authenticated proxy responses in shared caches / SW.
+            res.header('Cache-Control', 'private, no-store');
             res.status(upstreamRes.status);
             const buf = Buffer.from(await upstreamRes.arrayBuffer());
             res.send(buf);

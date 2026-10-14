@@ -2,6 +2,7 @@
  * Plugin lifecycle: map host, layers, forecast point, radar/alerts/lightning.
  */
 import type { PluginAPI } from '@tak-ps/cloudtak';
+import { refreshAuthToken } from './core/auth-token.ts';
 import { destroyMapHost, initMapHost } from './core/map-host.ts';
 import { destroyPointController, initPointController, refreshQueryPoint } from './core/point.ts';
 import { persist, state } from './core/state.ts';
@@ -47,6 +48,7 @@ function syncLegacyLayerFlags(): void {
 export async function init(api: PluginAPI): Promise<void> {
     ensureCatalog();
     syncLegacyLayerFlags();
+    await refreshAuthToken();
     initMapHost(api);
     initPointController(api);
     await initRadar(api);
@@ -56,7 +58,9 @@ export async function init(api: PluginAPI): Promise<void> {
     void refreshForecast();
     if (forecastTimer) clearInterval(forecastTimer);
     forecastTimer = setInterval(() => {
-        void refreshQueryPoint().then(() => refreshForecast());
+        void refreshAuthToken()
+            .then(() => refreshQueryPoint())
+            .then(() => refreshForecast());
     }, 5 * 60_000);
     syncSidebarTheme();
 }

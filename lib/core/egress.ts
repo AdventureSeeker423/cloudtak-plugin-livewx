@@ -1,6 +1,8 @@
 /**
- * Single HTTPS egress path: allowlisted hosts, rounded coords, CORS proxy fallback.
+ * Single HTTPS egress path: allowlisted hosts via CloudTAK /api/livewx/proxy.
+ * Requests must carry the CloudTAK session (Bearer or ?token=).
  */
+import { authHeaders, authToken, refreshAuthToken, withAuthQuery } from './auth-token.ts';
 
 export const COORD_DECIMALS = 3;
 export const PROXY_PATH = '/api/livewx/proxy';
@@ -64,14 +66,14 @@ export function hostAllowed(url: string): boolean {
 
 /**
  * Wrap an absolute HTTPS URL (optionally with MapLibre tokens) in the same-origin proxy.
- * Tokens are preserved so MapLibre can still substitute them.
+ * Includes ?token= so MapLibre tile fetches authenticate (fonts use the same pattern).
  */
 export function viaProxy(url: string): string {
     let encoded = encodeURIComponent(url);
     for (const tok of TILE_TOKENS) {
         encoded = encoded.replaceAll(encodeURIComponent(tok), tok);
     }
-    return `${PROXY_PATH}?url=${encoded}`;
+    return withAuthQuery(`${PROXY_PATH}?url=${encoded}`);
 }
 
 export type FetchJsonOpts = {
@@ -79,30 +81,27 @@ export type FetchJsonOpts = {
     headers?: Record<string, string>;
     /** When true, skip host allowlist (same-origin CloudTAK API only). */
     sameOrigin?: boolean;
-    /** Skip proxy fallback (for same-origin or already-proxied URLs). */
+    /** Skip proxy (for same-origin or already-proxied URLs). */
     noProxy?: boolean;
 };
 
 async function doFetch(url: string, opts: FetchJsonOpts): Promise<Response> {
-    // Do not set User-Agent — browsers forbid it; the CloudTAK proxy adds one server-side.
+    const sameOrigin = url.startsWith('/') || url.includes(PROXY_PATH) || Boolean(opts.sameOrigin);
+    // Refresh token before authenticated API calls so a stale cache does not 401.
+    if (sameOrigin) await refreshAuthToken();
     return fetch(url, {
         signal: opts.signal,
-        credentials: url.startsWith('/') || url.includes(PROXY_PATH) ? 'same-origin' : 'omit',
-        headers: {
+        credentials: sameOrigin ? 'same-origin' : 'omit',
+        headers: authHeaders({
             Accept: 'application/geo+json, application/json, image/*, */*',
             ...opts.headers,
-        },
+        }),
     });
 }
 
-/**
- * Resolve the URL the browser will fetch. External HTTPS hosts go through the
- * CloudTAK proxy so CORS never blocks weather layers (radar tiles that already
- * work via IEM/custom protocol are unchanged).
- */
 function resolveFetchUrl(url: string, opts: FetchJsonOpts): string {
     if (opts.sameOrigin || opts.noProxy || url.startsWith('/') || url.includes(PROXY_PATH)) {
-        return url;
+        return withAuthQuery(url);
     }
     if (!hostAllowed(url)) {
         throw new Error(`Host not allowlisted: ${url}`);
@@ -112,11 +111,22 @@ function resolveFetchUrl(url: string, opts: FetchJsonOpts): string {
 
 export async function fetchJson<T = unknown>(url: string, opts: FetchJsonOpts = {}): Promise<T> {
     const target = resolveFetchUrl(url, opts);
+    if (target.includes(PROXY_PATH) && !authToken()) {
+        await refreshAuthToken();
+        if (!authToken()) {
+            throw new Error('Not signed in — CloudTAK token required for weather proxy');
+        }
+    }
     const res = await doFetch(target, {
         ...opts,
         sameOrigin: target.startsWith('/') || Boolean(opts.sameOrigin),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+        if (res.status === 401) {
+            throw new Error('HTTP 401 — re-login or redeploy server route with token auth');
+        }
+        throw new Error(`HTTP ${res.status}`);
+    }
     return res.json() as Promise<T>;
 }
 

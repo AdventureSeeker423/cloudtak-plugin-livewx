@@ -3,6 +3,7 @@
  * Enabling a layer records consent for its hosts (listed in the UI).
  */
 import { reactive } from 'vue';
+import { refreshAuthToken } from '../core/auth-token.ts';
 import type { FeatureCollection } from '../core/geojson.ts';
 import { emptyFeatureCollection } from '../core/geojson.ts';
 import type { LiveWxMap } from '../core/map-types.ts';
@@ -122,6 +123,7 @@ export async function setLayerEnabled(id: string, enabled: boolean): Promise<voi
     try {
         if (enabled) {
             layerUi.status[id] = 'Starting…';
+            await refreshAuthToken();
             await def.start();
             const map = mapOf();
             if (map) def.restore(map);
@@ -174,6 +176,7 @@ export function refreshAllStatuses(): void {
 }
 
 export async function startEnabledLayers(): Promise<void> {
+    await refreshAuthToken();
     for (const def of defs.values()) {
         if (isEnabled(def.id)) {
             try {

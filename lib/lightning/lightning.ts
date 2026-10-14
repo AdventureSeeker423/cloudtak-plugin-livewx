@@ -364,16 +364,20 @@ function onStrike(lat: number, lon: number, timeMs: number): void {
 async function pollRelay(): Promise<void> {
     if (!running) return;
     try {
-        const url = `${BLITZ_RELAY_PATH}?since=${sinceMs}`;
+        const { authHeaders, refreshAuthToken, withAuthQuery } = await import('../core/auth-token.ts');
+        await refreshAuthToken();
+        const url = withAuthQuery(`${BLITZ_RELAY_PATH}?since=${sinceMs}`);
         const res = await fetch(url, {
-            headers: { Accept: 'application/json' },
+            headers: authHeaders({ Accept: 'application/json' }),
             credentials: 'same-origin',
         });
         if (!res.ok) {
             lightning.connected = false;
             lightning.error = res.status === 404
                 ? 'Lightning relay not installed (run install.sh for server route)'
-                : `Lightning relay HTTP ${res.status}`;
+                : res.status === 401
+                    ? 'Lightning relay HTTP 401 — session token missing; re-login'
+                    : `Lightning relay HTTP ${res.status}`;
             return;
         }
         const body = await res.json() as {
