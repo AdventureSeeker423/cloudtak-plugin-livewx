@@ -129,7 +129,7 @@
                         <tr>
                             <th>Time</th>
                             <th>Temp</th>
-                            <th>Wind</th>
+                            <th>Wind ({{ windUnit }})</th>
                             <th>PoP</th>
                         </tr>
                     </thead>
@@ -260,6 +260,8 @@ const nowRows = computed(() => {
     if (sky?.current != null) rows.push({ label: 'Sky', value: `${Math.round(sky.current)}%` });
     return rows;
 });
+
+const windUnit = computed(() => convertSpeed(0, state.units).unit);
 
 const hourlyRows = computed(() => {
     const temp = readingByLabel('temperature', 'temperature_2m');

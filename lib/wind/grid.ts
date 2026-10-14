@@ -34,8 +34,8 @@ type OmPoint = {
 /** Hard cap — Open-Meteo free tier 429s large multi-location current queries. */
 const MAX_POINTS = 20;
 
-/** Nice lattice steps (degrees). Smaller = denser. */
-const STEPS = [0.25, 0.5, 1, 2, 4, 8] as const;
+/** Nice lattice steps (degrees). Smaller = denser; grow past 8° for CONUS views. */
+const STEPS = [0.25, 0.5, 1, 2, 4, 8, 12, 16, 24, 32] as const;
 
 /** Meteorological "from" degrees → eastward (u) / northward (v) m/s. */
 export function uvFromSpeedDir(speedMs: number, fromDeg: number): { u: number; v: number } {
@@ -194,6 +194,7 @@ export function chooseStep(
 /**
  * Build a mesh on a world-aligned lattice so the same geographic cell is reused
  * across pan/zoom instead of shifting with the viewport corner.
+ * Always spans the full view — never truncates to the west/south when over budget.
  */
 export function buildMesh(
     west: number,
@@ -203,35 +204,58 @@ export function buildMesh(
     maxPoints = MAX_POINTS,
 ): { lats: number[]; lons: number[]; nx: number; ny: number; step: number; west: number; east: number; south: number; north: number } {
     let step = chooseStep(west, south, east, north, maxPoints);
-    let x0 = 0;
-    let y0 = 0;
-    let x1 = 0;
-    let y1 = 0;
-    let nx = 0;
-    let ny = 0;
+    let x0 = snapDown(west, step);
+    let y0 = snapDown(south, step);
+    let x1 = snapUp(east, step);
+    let y1 = snapUp(north, step);
+    let nx = Math.round((x1 - x0) / step) + 1;
+    let ny = Math.round((y1 - y0) / step) + 1;
 
-    for (let guard = 0; guard < STEPS.length; guard++) {
+    // Grow step until the lattice covering the *full* view fits the point cap.
+    let guard = 0;
+    while (nx * ny > maxPoints && guard < 24) {
+        guard++;
+        const idx = STEPS.indexOf(step as typeof STEPS[number]);
+        if (idx >= 0 && idx < STEPS.length - 1) {
+            step = STEPS[idx + 1];
+        } else {
+            step *= 1.5;
+        }
         x0 = snapDown(west, step);
         y0 = snapDown(south, step);
         x1 = snapUp(east, step);
         y1 = snapUp(north, step);
         nx = Math.round((x1 - x0) / step) + 1;
         ny = Math.round((y1 - y0) / step) + 1;
-        if (nx * ny <= maxPoints) break;
-        const idx = STEPS.indexOf(step as typeof STEPS[number]);
-        if (idx < 0 || idx >= STEPS.length - 1) break;
-        step = STEPS[idx + 1];
     }
 
-    // Last resort: thin the lattice evenly if still over cap.
-    while (nx * ny > maxPoints && (nx > 2 || ny > 2)) {
-        if (nx >= ny && nx > 2) {
-            nx--;
-            x1 = x0 + step * (nx - 1);
-        } else if (ny > 2) {
-            ny--;
-            y1 = y0 + step * (ny - 1);
-        } else break;
+    // Absolute fallback: even spacing across the full view (still full coverage).
+    if (nx * ny > maxPoints) {
+        const spanLon = Math.max(0.05, east - west);
+        const spanLat = Math.max(0.05, north - south);
+        const aspect = spanLon / spanLat;
+        nx = Math.max(2, Math.round(Math.sqrt(maxPoints * aspect)));
+        ny = Math.max(2, Math.floor(maxPoints / nx));
+        while (nx * ny > maxPoints && nx > 2) nx--;
+        while (nx * ny > maxPoints && ny > 2) ny--;
+        const dLon = spanLon / Math.max(1, nx - 1);
+        const dLat = spanLat / Math.max(1, ny - 1);
+        step = Math.max(dLon, dLat);
+        x0 = west;
+        y0 = south;
+        x1 = east;
+        y1 = north;
+        const lats: number[] = [];
+        const lons: number[] = [];
+        for (let j = 0; j < ny; j++) {
+            const lat = Math.round((y0 + dLat * j) * 1000) / 1000;
+            for (let i = 0; i < nx; i++) {
+                const lon = Math.round((x0 + dLon * i) * 1000) / 1000;
+                lats.push(lat);
+                lons.push(lon);
+            }
+        }
+        return { lats, lons, nx, ny, step, west: x0, east: x1, south: y0, north: y1 };
     }
 
     const lats: number[] = [];
