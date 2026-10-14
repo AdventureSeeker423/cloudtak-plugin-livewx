@@ -18,7 +18,7 @@ type LayerMeta = {
     /** Preferred property keys for the title, in order. */
     titleKeys?: string[];
     /** Custom detail card; when set, replaces the default property table. */
-    detailHtml?: (props: Record<string, unknown>) => string;
+    detailHtml?: (props: Record<string, unknown>) => string | Promise<string>;
 };
 
 const registry = new Map<string, LayerMeta>();
@@ -67,7 +67,8 @@ function ensurePopupStyle(): void {
 }
 .livewx-alert-card {
     max-width: 400px;
-    max-height: 60vh;
+    /* Cap height so tall cards (e.g. METAR + raw) stay on the map pane. */
+    max-height: min(420px, 50vh);
     overflow: auto;
 }
 .livewx-alert-eyebrow {
@@ -152,6 +153,37 @@ export function closeFeaturePopup(): void {
     popup = null;
 }
 
+/** Prefer an anchor that keeps the popup inside the map container. */
+function popupAnchor(
+    map: LiveWxMap,
+    lngLat: { lng: number; lat: number },
+): string {
+    try {
+        const project = map.project?.bind(map);
+        const host = map.getContainer?.();
+        if (!project || !host) return 'bottom';
+        const pt = project(lngLat) as { x: number; y: number };
+        const w = host.clientWidth || 0;
+        const h = host.clientHeight || 0;
+        if (w < 1 || h < 1) return 'bottom';
+        const top = pt.y < h * 0.38;
+        const bottom = pt.y > h * 0.62;
+        const left = pt.x < w * 0.28;
+        const right = pt.x > w * 0.72;
+        if (top && left) return 'top-left';
+        if (top && right) return 'top-right';
+        if (top) return 'top';
+        if (bottom && left) return 'bottom-left';
+        if (bottom && right) return 'bottom-right';
+        if (bottom) return 'bottom';
+        if (left) return 'left';
+        if (right) return 'right';
+        return 'bottom';
+    } catch {
+        return 'bottom';
+    }
+}
+
 /** Show arbitrary HTML in the shared LiveWX detail popup. */
 export async function showFeatureHtml(
     map: LiveWxMap,
@@ -178,6 +210,8 @@ export async function showFeatureHtml(
             closeButton: true,
             maxWidth: '420px',
             className: 'livewx-alert-popup',
+            anchor: popupAnchor(map, lngLat),
+            offset: 12,
         })
             .setLngLat(lngLat)
             .setHTML(html)
@@ -349,10 +383,12 @@ function onMapClick(e: {
     if (!meta) return;
     const props = (hit.properties || {}) as Record<string, unknown>;
     // MapLibre may stringify nested props; keep primitives.
-    const html = meta.detailHtml
-        ? meta.detailHtml(props)
-        : propertiesHtml(meta.label, props, meta.titleKeys);
-    void showFeatureHtml(map, e.lngLat, html);
+    void (async () => {
+        const html = meta.detailHtml
+            ? await meta.detailHtml(props)
+            : propertiesHtml(meta.label, props, meta.titleKeys);
+        await showFeatureHtml(map, e.lngLat, html);
+    })();
 }
 
 function onMouseMove(e: { point?: unknown }): void {

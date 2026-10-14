@@ -11,6 +11,7 @@ import { refreshForecast } from './forecast/engine.ts';
 import { registerBridgeLayers } from './layers/bridges.ts';
 import { registerCatalogLayers } from './layers/catalog.ts';
 import { registerHurricaneLayer } from './layers/hurricanes.ts';
+import { migrateLegacyRainLayers } from './layers/rain-totals.ts';
 import { startEnabledLayers, stopAllLayers } from './layers/registry.ts';
 import { registerDensityLayer, applyDensityFromState } from './lightning/density.ts';
 import { destroy as destroyRadar, init as initRadar } from './radar/radar.ts';
@@ -53,6 +54,7 @@ function syncLegacyLayerFlags(): void {
 export async function init(api: PluginAPI): Promise<void> {
     ensureCatalog();
     syncLegacyLayerFlags();
+    migrateLegacyRainLayers();
     await refreshAuthToken();
     initMapHost(api);
     initPointController(api);

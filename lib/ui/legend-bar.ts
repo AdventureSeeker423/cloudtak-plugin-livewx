@@ -26,16 +26,16 @@ export type LegendStrip = {
 const MENU_ORDER = [
     'radar_overlay',
     'satellite',
-    'rain_forecast',
-    'rain_12h',
     'rain_totals',
     'wind_field',
     'surface_wind',
     'lightning_density',
     'fire_outlook',
+    'fuel_moisture',
     'smoke',
     'air_quality',
     'flash_flood',
+    'rain_gauges',
     'snow_depth',
 ] as const;
 
@@ -79,32 +79,42 @@ const LEGENDS: Record<string, LegendStrip> = {
         min: 'warm',
         max: 'cold',
     },
-    rain_forecast: {
-        id: 'rain_forecast',
-        label: 'Rain Forecast (1 Hour)',
-        unit: (u) => (u === 'us' ? 'in' : 'mm'),
-        colors: RAIN_COLORS,
-        min: (u) => (u === 'us' ? '0.01' : '0.2'),
-        mid: (u) => (u === 'us' ? '0.5' : '12'),
-        max: (u) => (u === 'us' ? '2+' : '50+'),
-    },
-    rain_12h: {
-        id: 'rain_12h',
-        label: 'Rain Forecast (12 Hours)',
-        unit: (u) => (u === 'us' ? 'in' : 'mm'),
-        colors: RAIN_COLORS,
-        min: (u) => (u === 'us' ? '0.01' : '0.2'),
-        mid: (u) => (u === 'us' ? '1' : '25'),
-        max: (u) => (u === 'us' ? '5+' : '125+'),
-    },
     rain_totals: {
         id: 'rain_totals',
-        label: 'Rain Forecast (24 Hours)',
+        label: () => {
+            const w = state.rainTotalsWindow;
+            const labels: Record<string, string> = {
+                '1h': 'Rain Totals (1 h)',
+                '6h': 'Rain Totals (6 h)',
+                '24h': 'Rain Totals (24 h)',
+                '72h': 'Rain Totals (3 days)',
+                '7d': 'Rain Totals (7 days)',
+            };
+            return labels[w] || 'Rain Totals';
+        },
         unit: (u) => (u === 'us' ? 'in' : 'mm'),
         colors: RAIN_COLORS,
         min: (u) => (u === 'us' ? '0.01' : '0.2'),
         mid: (u) => (u === 'us' ? '1' : '25'),
         max: (u) => (u === 'us' ? '5+' : '125+'),
+    },
+    fuel_moisture: {
+        id: 'fuel_moisture',
+        label: 'Fuel Moisture',
+        unit: '%',
+        colors: ['#e53935', '#ff9800', '#ffeb3b', '#43a047'],
+        min: 'Critical',
+        mid: 'Moderate',
+        max: 'Low',
+    },
+    rain_gauges: {
+        id: 'rain_gauges',
+        label: 'Rain Gauges',
+        unit: 'in',
+        colors: ['#adb5bd', '#74c0fc', '#1c7ed6', '#2b8a3e', '#f08c00', '#e03131'],
+        min: '0',
+        mid: '0.5',
+        max: '2+',
     },
     wind_field: {
         id: 'wind_field',
@@ -371,6 +381,7 @@ export function attachLegendBar(map?: LiveWxMap | null): void {
                 state.densityLightningEnabled,
                 state.productId,
                 state.units,
+                state.rainTotalsWindow,
                 state.layers,
             ],
             () => paint(),

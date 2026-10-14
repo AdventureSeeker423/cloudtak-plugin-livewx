@@ -57,6 +57,8 @@ export interface PersistedSettings {
     consentedSources: string[];
     /** Bottom map legend strips. */
     legendsVisible: boolean;
+    /** Observed rain totals window: 1h | 6h | 24h | 72h | 7d */
+    rainTotalsWindow: string;
 }
 
 export interface LiveWxState extends PersistedSettings {
@@ -96,6 +98,7 @@ function load(): PersistedSettings {
         radarProvider: 'iem',
         consentedSources: [],
         legendsVisible: true,
+        rainTotalsWindow: '24h',
     };
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
@@ -140,10 +143,16 @@ function load(): PersistedSettings {
                 : [],
             // Default on when key missing (first load after this feature).
             legendsVisible: parsed.legendsVisible === undefined ? true : Boolean(parsed.legendsVisible),
+            rainTotalsWindow: normalizeRainWindow(parsed.rainTotalsWindow),
         };
     } catch {
         return defaults;
     }
+}
+
+function normalizeRainWindow(raw: unknown): string {
+    const allowed = new Set(['1h', '6h', '24h', '72h', '7d']);
+    return typeof raw === 'string' && allowed.has(raw) ? raw : '24h';
 }
 
 function clamp(n: number, min: number, max: number, fallback: number): number {
@@ -210,7 +219,13 @@ function payload(): PersistedSettings {
         radarProvider: state.radarProvider,
         consentedSources: state.consentedSources,
         legendsVisible: state.legendsVisible,
+        rainTotalsWindow: state.rainTotalsWindow,
     };
+}
+
+export function setRainTotalsWindow(id: string): void {
+    state.rainTotalsWindow = normalizeRainWindow(id);
+    persist();
 }
 
 export function setLegendsVisible(visible: boolean): void {

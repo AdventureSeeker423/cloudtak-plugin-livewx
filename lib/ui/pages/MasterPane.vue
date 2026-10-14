@@ -84,7 +84,44 @@
                     >{{ row.label }}</label>
                 </div>
                 <div
-                    v-if='enabled[row.id]'
+                    v-if='enabled[row.id] && row.id === "rain_totals"'
+                    class='opacity-row'
+                >
+                    <label
+                        class='form-label small mb-1'
+                        for='m-rain-window'
+                    >Period</label>
+                    <select
+                        id='m-rain-window'
+                        class='form-select form-select-sm mb-2'
+                        :value='state.rainTotalsWindow'
+                        @change='onRainWindow'
+                    >
+                        <option
+                            v-for='w in rainWindows'
+                            :key='w.id'
+                            :value='w.id'
+                        >
+                            {{ w.label }}
+                        </option>
+                    </select>
+                    <label
+                        class='form-label small mb-1'
+                        for='m-op-rain_totals'
+                    >Opacity {{ pct('rain_totals') }}%</label>
+                    <input
+                        id='m-op-rain_totals'
+                        class='form-range mb-0'
+                        type='range'
+                        min='0'
+                        max='100'
+                        step='1'
+                        :value='pct("rain_totals")'
+                        @input='onOpacity("rain_totals", $event)'
+                    >
+                </div>
+                <div
+                    v-else-if='enabled[row.id]'
                     class='opacity-row'
                 >
                     <label
@@ -301,6 +338,11 @@ import { setLightningStaleSec, setPage, state } from '../../core/state.ts';
 import { forecast } from '../../forecast/engine.ts';
 import { listSources } from '../../forecast/sources.ts';
 import {
+    RAIN_TOTAL_WINDOWS,
+    setRainTotalsWindow,
+    type RainTotalWindowId,
+} from '../../layers/rain-totals.ts';
+import {
     getLayerOpacity,
     layerUi,
     refreshAllStatuses,
@@ -308,14 +350,11 @@ import {
     setLayerOpacity,
 } from '../../layers/registry.ts';
 
-/** Only one rain accumulation layer at a time. */
-const RAIN_LAYER_IDS = ['rain_forecast', 'rain_12h', 'rain_totals'] as const;
+const rainWindows = RAIN_TOTAL_WINDOWS;
 
 const radarRows = [
     { id: 'satellite', label: 'Infrared Cloud Tops' },
-    { id: 'rain_forecast', label: 'Rain Forecast (1 Hour)' },
-    { id: 'rain_12h', label: 'Rain Forecast (12 Hours)' },
-    { id: 'rain_totals', label: 'Rain Forecast (24 Hours)' },
+    { id: 'rain_totals', label: 'Rain Totals' },
     { id: 'wind_field', label: 'Water Vapor' },
 ];
 
@@ -326,11 +365,13 @@ const windRows = [
 const moreRows = [
     { id: 'fire_outlook', label: 'Fire Outlook', opacity: true },
     { id: 'fw_zones', label: 'Fire Zones', opacity: false },
+    { id: 'fuel_moisture', label: 'Fuel Moisture', opacity: false },
     { id: 'smoke', label: 'Smoke', opacity: true },
     { id: 'air_quality', label: 'Air Quality', opacity: false },
     { id: 'metars', label: 'METAR', opacity: false },
     { id: 'flash_flood', label: 'Flash Flood', opacity: false },
     { id: 'river_gauges', label: 'River Gauges', opacity: false },
+    { id: 'rain_gauges', label: 'Rain Gauges', opacity: false },
     { id: 'buoys', label: 'Buoys', opacity: false },
     { id: 'hurricanes', label: 'Hurricanes', opacity: false },
     { id: 'avalanche', label: 'Avalanche', opacity: false },
@@ -389,19 +430,15 @@ function pct(id: string): number {
 
 async function toggle(id: string, ev: Event): Promise<void> {
     const on = (ev.target as HTMLInputElement).checked;
-    if (on && (RAIN_LAYER_IDS as readonly string[]).includes(id)) {
-        for (const other of RAIN_LAYER_IDS) {
-            if (other === id) continue;
-            if (state.layers[other]?.enabled) {
-                await setLayerEnabled(other, false);
-            }
-        }
-    }
     await setLayerEnabled(id, on);
 }
 
 function onOpacity(id: string, ev: Event): void {
     setLayerOpacity(id, Number((ev.target as HTMLInputElement).value) / 100);
+}
+
+function onRainWindow(ev: Event): void {
+    setRainTotalsWindow((ev.target as HTMLSelectElement).value as RainTotalWindowId);
 }
 
 function go(page: 'forecast' | 'radar'): void {

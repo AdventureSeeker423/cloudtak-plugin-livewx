@@ -7,7 +7,10 @@ import { mapOf } from '../core/map-host.ts';
 import { state } from '../core/state.ts';
 import { createGeoLayer, arcgisQueryUrl, mapEnvelope } from './geo-layer.ts';
 import { getLayerOpacity, registerLayer } from './registry.ts';
+import { registerFuelMoistureLayer } from './fuels.ts';
 import { registerMetarLayer } from './metars.ts';
+import { registerRainGaugesLayer } from './rain-gauges.ts';
+import { registerRainTotalsLayer } from './rain-totals.ts';
 import {
     arcgisExportTileUrl,
     ensureRasterLayer,
@@ -86,48 +89,7 @@ export function registerCatalogLayers(): void {
         opacity: 0.75,
     });
 
-    registerWmsLayer({
-        id: 'rain_forecast',
-        group: 'radar',
-        label: 'Rain Forecast (1 Hour)',
-        description: 'MRMS 1-hour precipitation',
-        hosts: ['mesonet.agron.iastate.edu'],
-        sends: 'Tiles',
-        sourceId: 'livewx-qpf-src',
-        layerId: 'livewx-qpf-lyr',
-        tileUrl: () => iemWmsTileUrl('us/mrms.cgi', 'mrms_p1h'),
-        opacity: 0.7,
-    });
-
-    registerWmsLayer({
-        id: 'rain_12h',
-        group: 'radar',
-        label: 'Rain Forecast (12 Hours)',
-        description: 'MRMS 12-hour precipitation',
-        hosts: ['mapservices.weather.noaa.gov'],
-        sends: 'Tiles',
-        sourceId: 'livewx-mrms12-src',
-        layerId: 'livewx-mrms12-lyr',
-        tileUrl: () => arcgisExportTileUrl(
-            `${MAPSERVICES_NWS}/raster/rest/services/obs/mrms_qpe/ImageServer`,
-            'image',
-            { rasterFunction: 'rft_12hr' },
-        ),
-        opacity: 0.7,
-    });
-
-    registerWmsLayer({
-        id: 'rain_totals',
-        group: 'radar',
-        label: 'Rain Forecast (24 Hours)',
-        description: 'MRMS 24-hour precipitation',
-        hosts: ['mesonet.agron.iastate.edu'],
-        sends: 'Tiles',
-        sourceId: 'livewx-mrms-src',
-        layerId: 'livewx-mrms-lyr',
-        tileUrl: () => iemWmsTileUrl('us/mrms.cgi', 'mrms_p24h'),
-        opacity: 0.7,
-    });
+    registerRainTotalsLayer();
 
     registerWmsLayer({
         id: 'wind_field',
@@ -245,6 +207,9 @@ export function registerCatalogLayers(): void {
             `${MAPSERVICES_NWS}/eventdriven/rest/services/water/riv_gauges/MapServer/0/query?where=1=1&outFields=*&returnGeometry=true&outSR=4326&f=geojson&resultRecordCount=500`,
         ),
     });
+
+    registerRainGaugesLayer();
+    registerFuelMoistureLayer();
 
     createGeoLayer({
         id: 'buoys',

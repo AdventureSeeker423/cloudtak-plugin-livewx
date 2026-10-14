@@ -4,6 +4,7 @@
 import { reactive } from 'vue';
 import { TtlCache, ageLabelMs, fetchJson, fetchText, roundCoord } from '../core/egress.ts';
 import { state } from '../core/state.ts';
+import { cacheTimeZone, timeZoneAt } from '../core/timezone.ts';
 import { toCelsius, toMeters, toMps } from '../core/units.ts';
 import {
     buildGroups,
@@ -40,7 +41,6 @@ export type ForecastSnapshot = {
 
 const resolveCache = new TtlCache<{ url: string; place: string; timeZone: string }>(7 * 24 * 60 * 60_000);
 const forecastCache = new TtlCache<unknown>(15 * 60_000);
-const timeZoneCache = new TtlCache<string>(7 * 24 * 60 * 60_000);
 
 export const forecast = reactive<ForecastSnapshot>({
     sourceId: 'nws',
@@ -90,23 +90,6 @@ function nearestCurrent(series: SeriesPoint[]): number | null {
     return best.v;
 }
 
-async function lookupTimeZone(lat: number, lon: number): Promise<string> {
-    const key = `${lat}|${lon}`;
-    const hit = timeZoneCache.get(key);
-    if (hit) return hit;
-    try {
-        const body = await fetchJson(`https://api.weather.gov/points/${lat},${lon}`);
-        const tz = pathGet(body, 'properties.timeZone');
-        if (typeof tz === 'string' && tz.length > 0) {
-            timeZoneCache.set(key, tz);
-            return tz;
-        }
-    } catch {
-        /* outside NWS coverage or network error */
-    }
-    return '';
-}
-
 async function resolveSource(
     def: WxSourceDef,
     lat: number,
@@ -135,7 +118,7 @@ async function resolveSource(
     const place = placeParts.join(', ');
     const tzRaw = pathGet(body, 'properties.timeZone');
     const timeZone = typeof tzRaw === 'string' ? tzRaw : '';
-    if (timeZone) timeZoneCache.set(`${lat}|${lon}`, timeZone);
+    if (timeZone) cacheTimeZone(lat, lon, timeZone);
     const entry = { url: dataUrl, place, timeZone };
     resolveCache.set(key, entry);
     return entry;
@@ -243,7 +226,7 @@ export async function refreshForecast(): Promise<void> {
             const omTz = (body as { timezone?: unknown }).timezone;
             if (typeof omTz === 'string' && omTz.length > 0) tz = omTz;
         }
-        if (!tz) tz = await lookupTimeZone(rLat, rLon);
+        if (!tz) tz = await timeZoneAt(rLat, rLon);
         forecast.timeZone = tz;
         forecast.readings = parseReadings(def, body);
         forecast.fetchedAt = Date.now();

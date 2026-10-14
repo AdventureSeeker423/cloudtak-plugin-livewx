@@ -8,7 +8,8 @@ import type { FeatureCollection } from '../core/geojson.ts';
 import type { LiveWxMap } from '../core/map-types.ts';
 import { firstSymbolLayer, mapOf } from '../core/map-host.ts';
 import { state } from '../core/state.ts';
-import { convertPressure, convertSpeed, convertTemp, type UnitSystem } from '../core/units.ts';
+import { formatStationLocal, timeZoneAt } from '../core/timezone.ts';
+import { convertPressure, convertTemp, type UnitSystem } from '../core/units.ts';
 import { escapeHtml, registerFeatureLayers, unregisterFeatureLayers } from './feature-popup.ts';
 import { mapEnvelope } from './geo-layer.ts';
 import {
@@ -91,21 +92,21 @@ function cloudBaseFt(base: number): number {
     return base > 0 && base < 1000 ? base * 100 : base;
 }
 
-function windText(props: Record<string, unknown>, units: UnitSystem): string {
+/** METAR wind stays in knots (same as the raw observation). */
+function windText(props: Record<string, unknown>): string {
     const dir = asStr(props.wdir);
     const spd = asNum(props.wspd);
     const gst = asNum(props.wgst);
     if (spd == null && !dir) return '—';
-    const speed = spd == null ? null : convertSpeed(spd * 0.514444, units);
-    const gust = gst == null ? null : convertSpeed(gst * 0.514444, units);
     const dirPart = !dir || dir === 'VRB' || dir === '0' || dir === '000'
         ? (spd === 0 ? 'Calm' : 'Variable')
         : `${dir}°`;
     if (dirPart === 'Calm' && (spd === 0 || spd == null)) return 'Calm';
+    const spdLabel = spd == null ? '' : `${Math.round(spd)} kt`;
     let out = dirPart === 'Variable' || dirPart === 'Calm'
-        ? `${dirPart}${speed ? ` ${speed.value} ${speed.unit}` : ''}`
-        : `${dirPart} at ${speed ? `${speed.value} ${speed.unit}` : `${spd} kt`}`;
-    if (gust) out += `, gusting ${gust.value} ${gust.unit}`;
+        ? `${dirPart}${spdLabel ? ` ${spdLabel}` : ''}`
+        : `${dirPart} at ${spdLabel || '—'}`;
+    if (gst != null) out += `, gusting ${Math.round(gst)} kt`;
     return out;
 }
 
@@ -133,30 +134,40 @@ function altimText(props: Record<string, unknown>, units: UnitSystem): string {
     return `${p.value} ${p.unit}`;
 }
 
-function tempPair(props: Record<string, unknown>, units: UnitSystem): string {
+/** Always show °C and °F (METAR source values are Celsius). */
+function bothTemps(celsius: number): string {
+    const c = convertTemp(celsius, 'metric');
+    const f = convertTemp(celsius, 'us');
+    return `${c.value}${c.unit} (${f.value}${f.unit})`;
+}
+
+function tempPair(props: Record<string, unknown>): string {
     const t = asNum(props.temp);
     const d = asNum(props.dewp);
     if (t == null && d == null) return '—';
     const parts: string[] = [];
-    if (t != null) {
-        const c = convertTemp(t, units);
-        parts.push(`${c.value}${c.unit}`);
-    }
-    if (d != null) {
-        const c = convertTemp(d, units);
-        parts.push(`dewpoint ${c.value}${c.unit}`);
-    }
+    if (t != null) parts.push(bothTemps(t));
+    if (d != null) parts.push(`dewpoint ${bothTemps(d)}`);
     return parts.join(' / ');
 }
 
-/** Decoded METAR card with raw text underneath. */
-export function metarDetailHtml(props: Record<string, unknown>): string {
+/** Decoded METAR card with raw text underneath. Observation time is station-local. */
+export async function metarDetailHtml(props: Record<string, unknown>): Promise<string> {
     const units = state.units;
     const id = asStr(props.id) || 'METAR';
     const site = asStr(props.site);
     const raw = asStr(props.rawOb);
     const when = asStr(props.obsTime);
-    const whenLabel = when ? new Date(when).toLocaleString() : '—';
+    const lat = asNum(props.lat);
+    const lon = asNum(props.lon);
+    let whenLabel = '—';
+    if (when) {
+        const ms = Date.parse(when);
+        if (Number.isFinite(ms)) {
+            const tz = (lat != null && lon != null) ? await timeZoneAt(lat, lon) : '';
+            whenLabel = formatStationLocal(ms, tz);
+        }
+    }
     const flt = asStr(props.fltcat) || '—';
     const vis = asStr(props.visib) || '—';
     const wx = asStr(props.wx) || 'None';
@@ -164,11 +175,11 @@ export function metarDetailHtml(props: Record<string, unknown>): string {
     const rows: Array<[string, string]> = [
         ['Flight category', flt],
         ['Observed', whenLabel],
-        ['Wind', windText(props, units)],
+        ['Wind', windText(props)],
         ['Visibility', vis === '—' ? '—' : `${vis} SM`],
         ['Weather', wx],
         ['Sky', skyText(props)],
-        ['Temperature', tempPair(props, units)],
+        ['Temperature', tempPair(props)],
         ['Altimeter', altimText(props, units)],
     ];
 
@@ -289,6 +300,8 @@ function parseCacheCsv(text: string): MetarRow[] {
             lon,
             props: {
                 id,
+                lat,
+                lon,
                 rawOb: (cols[iRaw] || '').trim(),
                 obsTime: (cols[iTime] || '').trim(),
                 temp: cols[iTemp] || '',
@@ -447,7 +460,7 @@ export function registerMetarLayer(): void {
         group: 'more',
         label: 'METAR',
         description: 'Airport METAR (AWC cache)',
-        hosts: ['aviationweather.gov'],
+        hosts: ['aviationweather.gov', 'api.weather.gov'],
         sends: 'Minute cache',
         start: async () => {
             running = true;
