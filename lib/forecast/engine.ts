@@ -28,6 +28,8 @@ export type ForecastReading = {
 export type ForecastSnapshot = {
     sourceId: string;
     placeName: string;
+    /** IANA timezone for the forecast point (e.g. America/New_York). */
+    timeZone: string;
     fetchedAt: number;
     attribution: string;
     readings: ForecastReading[];
@@ -36,12 +38,14 @@ export type ForecastSnapshot = {
     error: string;
 };
 
-const resolveCache = new TtlCache<{ url: string; place: string }>(7 * 24 * 60 * 60_000);
+const resolveCache = new TtlCache<{ url: string; place: string; timeZone: string }>(7 * 24 * 60 * 60_000);
 const forecastCache = new TtlCache<unknown>(15 * 60_000);
+const timeZoneCache = new TtlCache<string>(7 * 24 * 60 * 60_000);
 
 export const forecast = reactive<ForecastSnapshot>({
     sourceId: 'nws',
     placeName: '',
+    timeZone: '',
     fetchedAt: 0,
     attribution: '',
     readings: [],
@@ -86,12 +90,34 @@ function nearestCurrent(series: SeriesPoint[]): number | null {
     return best.v;
 }
 
-async function resolveSource(def: WxSourceDef, lat: number, lon: number): Promise<{ url: string; place: string }> {
+async function lookupTimeZone(lat: number, lon: number): Promise<string> {
+    const key = `${lat}|${lon}`;
+    const hit = timeZoneCache.get(key);
+    if (hit) return hit;
+    try {
+        const body = await fetchJson(`https://api.weather.gov/points/${lat},${lon}`);
+        const tz = pathGet(body, 'properties.timeZone');
+        if (typeof tz === 'string' && tz.length > 0) {
+            timeZoneCache.set(key, tz);
+            return tz;
+        }
+    } catch {
+        /* outside NWS coverage or network error */
+    }
+    return '';
+}
+
+async function resolveSource(
+    def: WxSourceDef,
+    lat: number,
+    lon: number,
+): Promise<{ url: string; place: string; timeZone: string }> {
     if (!def.resolveUrl) {
         const groups = buildGroups(def);
         return {
             url: fillUrl(def.requestUrl!, lat, lon, groups),
             place: '',
+            timeZone: '',
         };
     }
     const key = `${def.sourceId}|${lat}|${lon}`;
@@ -107,7 +133,10 @@ async function resolveSource(def: WxSourceDef, lat: number, lon: number): Promis
         .map((p) => pathGet(body, p))
         .filter((x): x is string => typeof x === 'string' && x.length > 0);
     const place = placeParts.join(', ');
-    const entry = { url: dataUrl, place };
+    const tzRaw = pathGet(body, 'properties.timeZone');
+    const timeZone = typeof tzRaw === 'string' ? tzRaw : '';
+    if (timeZone) timeZoneCache.set(`${lat}|${lon}`, timeZone);
+    const entry = { url: dataUrl, place, timeZone };
     resolveCache.set(key, entry);
     return entry;
 }
@@ -181,6 +210,7 @@ export async function refreshForecast(): Promise<void> {
     const lon = state.queryLon;
     if (lat == null || lon == null) {
         forecast.error = 'Select a forecast location';
+        forecast.timeZone = '';
         return;
     }
     const rLat = roundCoord(lat);
@@ -197,17 +227,24 @@ export async function refreshForecast(): Promise<void> {
     forecast.attribution = def.attribution || def.displayName;
 
     try {
-        const { url, place } = await resolveSource(def, rLat, rLon);
+        const { url, place, timeZone } = await resolveSource(def, rLat, rLon);
         if (place) {
             forecast.placeName = place;
             state.placeName = place;
         }
+        let tz = timeZone;
         const cacheKey = `${def.sourceId}|${url}`;
         let body = forecastCache.get(cacheKey);
         if (!body) {
             body = await fetchJson(url);
             forecastCache.set(cacheKey, body);
         }
+        if (!tz && body && typeof body === 'object' && body !== null) {
+            const omTz = (body as { timezone?: unknown }).timezone;
+            if (typeof omTz === 'string' && omTz.length > 0) tz = omTz;
+        }
+        if (!tz) tz = await lookupTimeZone(rLat, rLon);
+        forecast.timeZone = tz;
         forecast.readings = parseReadings(def, body);
         forecast.fetchedAt = Date.now();
 

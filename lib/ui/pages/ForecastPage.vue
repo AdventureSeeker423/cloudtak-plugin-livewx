@@ -165,13 +165,18 @@
 </template>
 
 <script setup lang='ts'>
-import { computed, onUnmounted } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import {
     beginLocationPick,
     cancelLocationPick,
     pointUi,
 } from '../../core/point.ts';
 import { persist, setUnits, state } from '../../core/state.ts';
+import {
+    currentHourStartMs,
+    formatInTimeZone,
+    formatLocalClock,
+} from '../../core/timezone.ts';
 import {
     convertSpeed,
     convertTemp,
@@ -189,12 +194,27 @@ import {
 
 const sources = availableSources();
 
+/** Ticks so the location local clock stays current. */
+const clockNow = ref(Date.now());
+let clockTimer: ReturnType<typeof setInterval> | null = null;
+
+onMounted(() => {
+    clockTimer = setInterval(() => {
+        clockNow.value = Date.now();
+    }, 15_000);
+});
+
 const locationLine = computed(() => {
-    if (state.placeName) return state.placeName;
-    if (state.queryLat != null && state.queryLon != null) {
-        return `${state.queryLat}, ${state.queryLon}`;
+    void clockNow.value;
+    let place = '';
+    if (state.placeName) place = state.placeName;
+    else if (state.queryLat != null && state.queryLon != null) {
+        place = `${state.queryLat}, ${state.queryLon}`;
     }
-    return '';
+    if (!place) return '';
+    const tz = forecast.timeZone;
+    if (!tz) return place;
+    return `${place} - Local Time: ${formatLocalClock(tz, clockNow.value)}`;
 });
 
 const nowRows = computed(() => {
@@ -245,10 +265,15 @@ const hourlyRows = computed(() => {
     const temp = readingByLabel('temperature', 'temperature_2m');
     const wind = readingByLabel('windSpeed', 'wind_speed', 'twentyFootWindSpeed');
     const pop = readingByLabel('probabilityOfPrecipitation', 'precipitation_probability');
-    // Current hour and forward only — providers often include past hours in the series.
-    const hourStart = new Date();
-    hourStart.setMinutes(0, 0, 0);
-    const fromMs = hourStart.getTime();
+    // Current hour and forward in the *forecast location* timezone (not browser TZ).
+    const tz = forecast.timeZone;
+    const fromMs = tz
+        ? currentHourStartMs(tz)
+        : (() => {
+            const hourStart = new Date();
+            hourStart.setMinutes(0, 0, 0);
+            return hourStart.getTime();
+        })();
     const future = (temp?.series ?? []).filter((pt) => {
         const ms = new Date(pt.t).getTime();
         return Number.isFinite(ms) && ms >= fromMs;
@@ -258,9 +283,13 @@ const hourlyRows = computed(() => {
         const wi = wind?.series?.find((p) => p.t === pt.t)?.v;
         const ws = wi != null ? convertSpeed(wi, state.units) : null;
         const p = pop?.series?.find((sp) => sp.t === pt.t)?.v;
+        const timeOpts: Intl.DateTimeFormatOptions = { weekday: 'short', hour: 'numeric' };
+        const time = tz
+            ? formatInTimeZone(pt.t, tz, timeOpts)
+            : new Date(pt.t).toLocaleString(undefined, timeOpts);
         return {
             t: pt.t,
-            time: new Date(pt.t).toLocaleString(undefined, { weekday: 'short', hour: 'numeric' }),
+            time,
             temp: pt.v != null ? `${t.value}${t.unit}` : '—',
             wind: ws ? `${ws.value}` : '—',
             pop: p != null ? `${Math.round(p)}%` : '—',
@@ -274,6 +303,10 @@ const afdPreview = computed(() => {
 });
 
 onUnmounted(() => {
+    if (clockTimer != null) {
+        clearInterval(clockTimer);
+        clockTimer = null;
+    }
     if (pointUi.picking) cancelLocationPick();
 });
 
