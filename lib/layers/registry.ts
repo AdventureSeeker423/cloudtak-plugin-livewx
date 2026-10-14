@@ -1,5 +1,6 @@
 /**
- * Layer catalog registry: enable/disable, consent, status, z-order hooks.
+ * Layer catalog registry: enable/disable, status, z-order hooks.
+ * Enabling a layer records consent for its hosts (listed in the UI).
  */
 import { reactive } from 'vue';
 import type { FeatureCollection } from '../core/geojson.ts';
@@ -25,15 +26,13 @@ export type LayerDef = {
     label: string;
     description: string;
     hosts: string[];
-    /** What is sent when the layer fetches (shown in consent). */
+    /** What is sent when the layer fetches (shown in UI). */
     sends: string;
     experimental?: boolean;
     keyHtml?: string;
-    /** Attach map sources/layers when enabled. */
     start: () => void | Promise<void>;
     stop: () => void | Promise<void>;
     restore: (map: LiveWxMap) => void;
-    /** Optional status line for the layers page. */
     status?: () => string;
 };
 
@@ -54,7 +53,8 @@ const defs = new Map<string, LayerDef>();
 export const layerUi = reactive({
     /** layerId → last status string */
     status: {} as Record<string, string>,
-    consentOpen: null as string | null,
+    /** layerId → busy starting/stopping */
+    busy: {} as Record<string, boolean>,
 });
 
 export function registerLayer(def: LayerDef): void {
@@ -65,7 +65,7 @@ export function registerLayer(def: LayerDef): void {
             if (isEnabled(def.id)) def.restore(map);
         },
         destroy: () => {
-            if (isEnabled(def.id)) def.stop();
+            if (isEnabled(def.id)) void def.stop();
         },
     });
 }
@@ -86,55 +86,79 @@ export function isEnabled(id: string): boolean {
     return Boolean(state.layers[id]?.enabled);
 }
 
-export function hasConsent(id: string): boolean {
-    return Boolean(state.layers[id]?.consent);
-}
-
-export function setConsent(id: string, ok: boolean): void {
-    ensureLayerState(id);
-    state.layers[id].consent = ok;
-    persistLayers();
-}
-
 function ensureLayerState(id: string): void {
     if (!state.layers[id]) {
-        state.layers[id] = { enabled: false, consent: false };
+        // Replace object so Vue tracks new keys reliably.
+        state.layers = {
+            ...state.layers,
+            [id]: { enabled: false, consent: false },
+        };
     }
+}
+
+function writeLayerState(id: string, patch: { enabled?: boolean; consent?: boolean }): void {
+    ensureLayerState(id);
+    const cur = state.layers[id];
+    state.layers = {
+        ...state.layers,
+        [id]: {
+            enabled: patch.enabled ?? cur.enabled,
+            consent: patch.consent ?? cur.consent,
+        },
+    };
+    persistLayers();
 }
 
 export async function setLayerEnabled(id: string, enabled: boolean): Promise<void> {
     const def = defs.get(id);
-    if (!def) return;
-    ensureLayerState(id);
-    if (enabled && !state.layers[id].consent) {
-        layerUi.consentOpen = id;
+    if (!def) {
+        layerUi.status[id] = 'Unknown layer';
         return;
     }
-    state.layers[id].enabled = enabled;
-    persistLayers();
-    if (enabled) {
-        await def.start();
-        const map = mapOf();
-        if (map) def.restore(map);
-    } else {
-        await def.stop();
-    }
+    layerUi.busy[id] = true;
+    // Enabling implies consent for the hosts listed on the row.
+    writeLayerState(id, enabled ? { enabled: true, consent: true } : { enabled: false });
     refreshStatus(id);
+    try {
+        if (enabled) {
+            layerUi.status[id] = 'Starting…';
+            await def.start();
+            const map = mapOf();
+            if (map) def.restore(map);
+        } else {
+            await def.stop();
+        }
+    } catch (e) {
+        if (enabled) {
+            try { await def.stop(); } catch { /* ignore */ }
+            writeLayerState(id, { enabled: false });
+        }
+        layerUi.status[id] = e instanceof Error ? e.message : 'Layer failed';
+    } finally {
+        layerUi.busy[id] = false;
+        refreshStatus(id);
+    }
 }
 
-export function confirmConsentAndEnable(id: string): void {
-    setConsent(id, true);
-    layerUi.consentOpen = null;
-    void setLayerEnabled(id, true);
-}
-
-export function cancelConsent(): void {
-    layerUi.consentOpen = null;
+export async function setGroupEnabled(group: LayerGroupId, enabled: boolean): Promise<void> {
+    const layers = layersInGroup(group);
+    // Sequential so map paint stays stable and status updates are readable.
+    for (const layer of layers) {
+        await setLayerEnabled(layer.id, enabled);
+    }
 }
 
 export function refreshStatus(id: string): void {
     const def = defs.get(id);
-    if (!def?.status) {
+    if (!def) {
+        layerUi.status[id] = 'Off';
+        return;
+    }
+    if (layerUi.busy[id]) {
+        layerUi.status[id] = isEnabled(id) ? 'Starting…' : 'Stopping…';
+        return;
+    }
+    if (!def.status) {
         layerUi.status[id] = isEnabled(id) ? 'On' : 'Off';
         return;
     }
@@ -151,13 +175,13 @@ export function refreshAllStatuses(): void {
 
 export async function startEnabledLayers(): Promise<void> {
     for (const def of defs.values()) {
-        if (isEnabled(def.id) && hasConsent(def.id)) {
+        if (isEnabled(def.id)) {
             try {
                 await def.start();
                 const map = mapOf();
                 if (map) def.restore(map);
-            } catch {
-                /* ignore */
+            } catch (e) {
+                layerUi.status[def.id] = e instanceof Error ? e.message : 'Start failed';
             }
         }
         refreshStatus(def.id);
@@ -167,12 +191,11 @@ export async function startEnabledLayers(): Promise<void> {
 export function stopAllLayers(): void {
     for (const def of defs.values()) {
         if (isEnabled(def.id)) {
-            try { def.stop(); } catch { /* ignore */ }
+            try { void def.stop(); } catch { /* ignore */ }
         }
     }
 }
 
-/** Helper for GeoJSON layer modules. */
 export function ensureGeoJsonSource(
     map: LiveWxMap,
     sourceId: string,
@@ -201,5 +224,4 @@ export function emptyFc(): FeatureCollection {
     return emptyFeatureCollection();
 }
 
-/** Re-export for layer modules that need the plugin API. */
 export { getApi, mapOf };

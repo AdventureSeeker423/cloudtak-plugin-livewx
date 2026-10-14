@@ -56,8 +56,11 @@ const PROXY_ALLOW = new Set([
     'wcc.sc.egov.usda.gov',
     'data.cocorahs.org',
     'waterservices.usgs.gov',
+    'waterdata.usgs.gov',
     'spot.weather.gov',
     'geocoding.geo.census.gov',
+    'nomads.ncep.noaa.gov',
+    'radar.weather.gov',
 ]);
 
 const MAX_STRIKES = 4000;

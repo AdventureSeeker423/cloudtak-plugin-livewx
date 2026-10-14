@@ -1,38 +1,8 @@
 <template>
     <div>
         <p class='text-secondary small mb-3'>
-            First enable prompts for consent (hosts + what is sent). Layers are read-only map overlays — not CoT.
+            Toggle a layer to draw it on the map. Hosts contacted are listed under each row. Overlays are read-only — not CoT.
         </p>
-
-        <div
-            v-if='layerUi.consentOpen'
-            class='alert alert-warning'
-        >
-            <strong>{{ consentDef?.label }}</strong>
-            <p class='small mb-2'>
-                {{ consentDef?.description }}
-            </p>
-            <p class='small mb-1'>
-                Hosts: {{ consentDef?.hosts.join(', ') || 'none' }}
-            </p>
-            <p class='small mb-3'>
-                Sends: {{ consentDef?.sends }}
-            </p>
-            <button
-                class='btn btn-sm btn-primary me-2'
-                type='button'
-                @click='confirmConsentAndEnable(layerUi.consentOpen!)'
-            >
-                Allow
-            </button>
-            <button
-                class='btn btn-sm btn-outline-secondary'
-                type='button'
-                @click='cancelConsent'
-            >
-                Cancel
-            </button>
-        </div>
 
         <div
             v-for='group in groups'
@@ -46,14 +16,16 @@
                 <button
                     class='btn btn-sm btn-outline-secondary'
                     type='button'
-                    @click='toggleGroup(group, true)'
+                    :disabled='groupBusy(group)'
+                    @click='onGroup(group, true)'
                 >
                     All on
                 </button>
                 <button
                     class='btn btn-sm btn-outline-secondary ms-1'
                     type='button'
-                    @click='toggleGroup(group, false)'
+                    :disabled='groupBusy(group)'
+                    @click='onGroup(group, false)'
                 >
                     All off
                 </button>
@@ -68,7 +40,8 @@
                         :id='`lyr-${layer.id}`'
                         class='form-check-input'
                         type='checkbox'
-                        :checked='isEnabled(layer.id)'
+                        :checked='enabledMap[layer.id]'
+                        :disabled='Boolean(layerUi.busy[layer.id])'
                         @change='onToggle(layer.id, ($event.target as HTMLInputElement).checked)'
                     >
                     <label
@@ -86,7 +59,13 @@
                     {{ layerUi.status[layer.id] || layer.description }}
                 </p>
                 <p
-                    v-if='layer.keyHtml && isEnabled(layer.id)'
+                    v-if='layer.hosts.length'
+                    class='text-secondary small mb-0 ms-4'
+                >
+                    Hosts: {{ layer.hosts.join(', ') }}
+                </p>
+                <p
+                    v-if='layer.keyHtml && enabledMap[layer.id]'
                     class='small ms-4 mb-0'
                 >
                     Key: {{ layer.keyHtml }}
@@ -98,15 +77,13 @@
 
 <script setup lang='ts'>
 import { computed, onMounted } from 'vue';
+import { state } from '../../core/state.ts';
 import {
     GROUP_LABELS,
-    cancelConsent,
-    confirmConsentAndEnable,
-    getLayer,
-    isEnabled,
     layerUi,
     layersInGroup,
     refreshAllStatuses,
+    setGroupEnabled,
     setLayerEnabled,
     type LayerGroupId,
 } from '../../layers/registry.ts';
@@ -124,19 +101,28 @@ const groups: LayerGroupId[] = [
 ];
 const groupLabels = GROUP_LABELS;
 
-const consentDef = computed(() =>
-    layerUi.consentOpen ? getLayer(layerUi.consentOpen) : undefined,
-);
+/** Reactive map of id → enabled so switches update when state.layers changes. */
+const enabledMap = computed(() => {
+    const out: Record<string, boolean> = {};
+    for (const g of groups) {
+        for (const layer of layersInGroup(g)) {
+            out[layer.id] = Boolean(state.layers[layer.id]?.enabled);
+        }
+    }
+    return out;
+});
 
 onMounted(() => refreshAllStatuses());
+
+function groupBusy(group: LayerGroupId): boolean {
+    return layersInGroup(group).some((l) => layerUi.busy[l.id]);
+}
 
 function onToggle(id: string, on: boolean): void {
     void setLayerEnabled(id, on);
 }
 
-function toggleGroup(group: LayerGroupId, on: boolean): void {
-    for (const layer of layersInGroup(group)) {
-        void setLayerEnabled(layer.id, on);
-    }
+function onGroup(group: LayerGroupId, on: boolean): void {
+    void setGroupEnabled(group, on);
 }
 </script>

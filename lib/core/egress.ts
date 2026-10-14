@@ -1,10 +1,9 @@
 /**
- * Single HTTPS egress path: allowlisted hosts, rounded coords, stale helpers.
+ * Single HTTPS egress path: allowlisted hosts, rounded coords, CORS proxy fallback.
  */
 
 export const COORD_DECIMALS = 3;
-
-const DEFAULT_UA = 'CloudTAK-LiveWX/2.0 (weather plugin; +https://github.com/AdventureSeeker423/cloudtak-plugin-livewx)';
+export const PROXY_PATH = '/api/livewx/proxy';
 
 /** Hosts the plugin may contact from the browser (or via proxy). */
 export const ALLOWED_HOSTS = new Set([
@@ -40,6 +39,14 @@ export const ALLOWED_HOSTS = new Set([
     'radar.weather.gov',
 ]);
 
+/** MapLibre template tokens that must stay literal inside a proxied URL. */
+const TILE_TOKENS = [
+    '{z}', '{x}', '{y}',
+    '{bbox-epsg-3857}',
+    '{bbox-epsg-4326}',
+    '{quadkey}',
+];
+
 export function roundCoord(n: number, decimals = COORD_DECIMALS): number {
     const f = 10 ** decimals;
     return Math.round(n * f) / f;
@@ -55,42 +62,71 @@ export function hostAllowed(url: string): boolean {
     }
 }
 
+/**
+ * Wrap an absolute HTTPS URL (optionally with MapLibre tokens) in the same-origin proxy.
+ * Tokens are preserved so MapLibre can still substitute them.
+ */
+export function viaProxy(url: string): string {
+    let encoded = encodeURIComponent(url);
+    for (const tok of TILE_TOKENS) {
+        encoded = encoded.replaceAll(encodeURIComponent(tok), tok);
+    }
+    return `${PROXY_PATH}?url=${encoded}`;
+}
+
 export type FetchJsonOpts = {
     signal?: AbortSignal;
     headers?: Record<string, string>;
     /** When true, skip host allowlist (same-origin CloudTAK API only). */
     sameOrigin?: boolean;
+    /** Skip proxy fallback (for same-origin or already-proxied URLs). */
+    noProxy?: boolean;
 };
 
-export async function fetchJson<T = unknown>(url: string, opts: FetchJsonOpts = {}): Promise<T> {
-    if (!opts.sameOrigin && !hostAllowed(url)) {
-        throw new Error(`Host not allowlisted: ${url}`);
-    }
-    const res = await fetch(url, {
+async function doFetch(url: string, opts: FetchJsonOpts): Promise<Response> {
+    // Do not set User-Agent — browsers forbid it; the CloudTAK proxy adds one server-side.
+    return fetch(url, {
         signal: opts.signal,
+        credentials: url.startsWith('/') || url.includes(PROXY_PATH) ? 'same-origin' : 'omit',
         headers: {
-            Accept: 'application/geo+json, application/json',
-            'User-Agent': DEFAULT_UA,
+            Accept: 'application/geo+json, application/json, image/*, */*',
             ...opts.headers,
         },
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+}
+
+/**
+ * Resolve the URL the browser will fetch. External HTTPS hosts go through the
+ * CloudTAK proxy so CORS never blocks weather layers (radar tiles that already
+ * work via IEM/custom protocol are unchanged).
+ */
+function resolveFetchUrl(url: string, opts: FetchJsonOpts): string {
+    if (opts.sameOrigin || opts.noProxy || url.startsWith('/') || url.includes(PROXY_PATH)) {
+        return url;
+    }
+    if (!hostAllowed(url)) {
+        throw new Error(`Host not allowlisted: ${url}`);
+    }
+    return viaProxy(url);
+}
+
+export async function fetchJson<T = unknown>(url: string, opts: FetchJsonOpts = {}): Promise<T> {
+    const target = resolveFetchUrl(url, opts);
+    const res = await doFetch(target, {
+        ...opts,
+        sameOrigin: target.startsWith('/') || Boolean(opts.sameOrigin),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json() as Promise<T>;
 }
 
 export async function fetchText(url: string, opts: FetchJsonOpts = {}): Promise<string> {
-    if (!opts.sameOrigin && !hostAllowed(url)) {
-        throw new Error(`Host not allowlisted: ${url}`);
-    }
-    const res = await fetch(url, {
-        signal: opts.signal,
-        headers: {
-            Accept: 'text/plain, text/html, */*',
-            'User-Agent': DEFAULT_UA,
-            ...opts.headers,
-        },
+    const target = resolveFetchUrl(url, opts);
+    const res = await doFetch(target, {
+        ...opts,
+        sameOrigin: target.startsWith('/') || Boolean(opts.sameOrigin),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.text();
 }
 
@@ -117,7 +153,6 @@ export class TtlCache<T> {
         return e.value;
     }
 
-    /** Return even if stale (for display while refreshing). */
     peek(key: string): { value: T; at: number; stale: boolean } | undefined {
         const e = this.store.get(key);
         if (!e) return undefined;

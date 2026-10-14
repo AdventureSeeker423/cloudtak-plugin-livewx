@@ -619,12 +619,14 @@ export function registerCatalogLayers(): void {
         hosts: [],
         sends: 'Nothing — local site list only.',
         start: async () => {
-            state.sitesOnMap = true;
+            const { setSitesOnMap } = await import('../core/state.ts');
+            setSitesOnMap(true);
             const { applySiteMarkers } = await import('../radar/radar.ts');
             applySiteMarkers();
         },
         stop: async () => {
-            state.sitesOnMap = false;
+            const { setSitesOnMap } = await import('../core/state.ts');
+            setSitesOnMap(false);
             const { applySiteMarkers } = await import('../radar/radar.ts');
             applySiteMarkers();
         },

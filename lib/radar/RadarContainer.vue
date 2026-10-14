@@ -368,17 +368,13 @@ import { computed, onMounted, onUnmounted, ref } from 'vue';
 import type { PluginAPI } from '@tak-ps/cloudtak';
 import {
     currentProduct,
-    applyAlerts,
     applyFilter,
-    applyLightningToggle,
     applyOpacity,
     applyRadarSettings,
-    applySiteMarkers,
     availableCodes,
     goLive,
     liveValidAt,
     replayFramesRef,
-    setOverlayEnabled,
     setReplayIndex,
     togglePlay,
     visibleProducts,
@@ -388,17 +384,15 @@ import { groupedOptions, availableTilts, filterMax, filterUnit, tiltLabel } from
 import { findSite, isMosaic, searchSites, siteLabel } from './sites.ts';
 import {
     persist,
-    setAlertsEnabled,
     setFilter,
-    setLightningEnabled,
     setLightningStaleSec,
     setOpacity,
     setProduct,
     setSite,
-    setSitesOnMap,
     setTilt,
     state,
 } from '../core/state.ts';
+import { setLayerEnabled } from '../layers/registry.ts';
 import { ageLabel, shortAgeLabel } from './tiles.ts';
 
 defineProps<{
@@ -513,7 +507,7 @@ const replayTicks = computed(() => {
 function onOverlayToggle(ev: Event): void {
     const on = (ev.target as HTMLInputElement).checked;
     if (!on) closeSiteMenu();
-    void setOverlayEnabled(on);
+    void setLayerEnabled('radar_overlay', on);
 }
 
 function wheelStep(ev: WheelEvent): number {
@@ -591,8 +585,7 @@ function onSiteKey(ev: KeyboardEvent): void {
 }
 
 function onSitesToggle(ev: Event): void {
-    setSitesOnMap((ev.target as HTMLInputElement).checked);
-    applySiteMarkers();
+    void setLayerEnabled('radar_sites', (ev.target as HTMLInputElement).checked);
 }
 
 function onProduct(ev: Event): void {
@@ -620,13 +613,11 @@ function onFilterWheel(ev: WheelEvent): void {
 }
 
 function onAlertsToggle(ev: Event): void {
-    setAlertsEnabled((ev.target as HTMLInputElement).checked);
-    applyAlerts();
+    void setLayerEnabled('nws_wwa', (ev.target as HTMLInputElement).checked);
 }
 
 function onLightningToggle(ev: Event): void {
-    setLightningEnabled((ev.target as HTMLInputElement).checked);
-    applyLightningToggle();
+    void setLayerEnabled('blitzortung', (ev.target as HTMLInputElement).checked);
 }
 
 function onProvider(ev: Event): void {

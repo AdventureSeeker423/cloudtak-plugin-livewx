@@ -10,6 +10,7 @@ import {
     emptyFc,
     ensureGeoJsonSource,
     mapOf,
+    refreshStatus,
     registerLayer,
     removeLayerSafe,
     removeSourceSafe,
@@ -103,6 +104,7 @@ export function createGeoLayer(opts: GeoLayerOpts): LayerDef {
         } catch (e) {
             lastError = e instanceof Error ? e.message : 'Fetch failed';
         }
+        refreshStatus(opts.id);
     }
 
     function paint(map: LiveWxMap): void {

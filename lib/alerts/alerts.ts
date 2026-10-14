@@ -161,11 +161,10 @@ function emptyCollection(): AlertCollection {
 }
 
 async function fetchAlerts(): Promise<AlertCollection> {
-    const res = await fetch(NWS_ALERTS_URL, {
+    const { fetchJson } = await import('../core/egress.ts');
+    const body = await fetchJson<AlertCollection>(NWS_ALERTS_URL, {
         headers: { Accept: 'application/geo+json' },
     });
-    if (!res.ok) throw new Error(`NWS alerts HTTP ${res.status}`);
-    const body = await res.json() as AlertCollection;
     const features = (body.features ?? []).filter((f) => {
         const event = f.properties?.event ?? '';
         if (!isWatchOrWarning(event)) return false;
