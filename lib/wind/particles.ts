@@ -5,7 +5,14 @@
 import type { LiveWxMap } from '../core/map-types.ts';
 import { mapOf } from '../core/map-host.ts';
 import { getLayerOpacity, refreshStatus, registerLayer } from '../layers/registry.ts';
-import { boundsKey, fetchWindGrid, sampleGrid, type WindGrid } from './grid.ts';
+import {
+    boundsKey,
+    fetchWindGrid,
+    gridStillGood,
+    sampleGrid,
+    viewBounds,
+    type WindGrid,
+} from './grid.ts';
 
 const PARTICLES = 1500;
 const TRAIL = 28;
@@ -311,24 +318,16 @@ async function loadGrid(force = false): Promise<void> {
         return;
     }
     const map = mapOf();
-    const b = map?.getBounds?.();
-    if (b && !force) {
-        try {
-            const west = b.getWest?.();
-            const east = b.getEast?.();
-            const south = b.getSouth?.();
-            const north = b.getNorth?.();
-            if ([west, east, south, north].every((n) => typeof n === 'number')) {
-                const key = boundsKey({
-                    west: west as number,
-                    east: east as number,
-                    south: south as number,
-                    north: north as number,
-                });
-                if (key === lastBoundsKey && grid) return;
-                lastBoundsKey = key;
-            }
-        } catch { /* fetch anyway */ }
+    const view = viewBounds();
+    if (view && !force) {
+        const key = boundsKey(view);
+        // Keep the current lattice while the view stays covered — stop direction flips on zoom.
+        if (grid && gridStillGood(grid, view)) {
+            lastBoundsKey = key;
+            return;
+        }
+        if (key === lastBoundsKey && grid) return;
+        lastBoundsKey = key;
     }
     abort?.abort();
     abort = new AbortController();
@@ -340,9 +339,20 @@ async function loadGrid(force = false): Promise<void> {
             statusText = 'Waiting for map view…';
             return;
         }
+        const sameLattice = Boolean(
+            grid
+            && grid.step === next.step
+            && grid.west === next.west
+            && grid.south === next.south
+            && grid.nx === next.nx
+            && grid.ny === next.ny,
+        );
         grid = next;
-        for (let i = 0; i < PARTICLES; i++) respawn(i);
-        statusText = `10 m · ${next.model}`;
+        // Only reshuffle particles when the lattice changes (not every soft refresh).
+        if (!sameLattice) {
+            for (let i = 0; i < PARTICLES; i++) respawn(i);
+        }
+        statusText = `10 m · ${next.model} · ${next.step}°`;
         if (map) {
             ensureCanvas(map);
             draw(map);

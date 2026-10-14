@@ -1,6 +1,6 @@
 /**
  * Wind U/V grid over the map view via Open-Meteo (JSON stand-in for Atmosphere's NOMADS GRIB).
- * Kept small (≤20 points) so the free Open-Meteo API does not 429.
+ * Samples sit on a fixed world lat/lon lattice so pan/zoom does not invent a new wind field.
  */
 import { fetchJson } from '../core/egress.ts';
 import { mapOf } from '../core/map-host.ts';
@@ -12,6 +12,8 @@ export type WindGrid = {
     east: number;
     south: number;
     north: number;
+    /** Lattice spacing in degrees (snapped world grid). */
+    step: number;
     nx: number;
     ny: number;
     u: Float32Array;
@@ -31,6 +33,9 @@ type OmPoint = {
 
 /** Hard cap — Open-Meteo free tier 429s large multi-location current queries. */
 const MAX_POINTS = 20;
+
+/** Nice lattice steps (degrees). Smaller = denser. */
+const STEPS = [0.25, 0.5, 1, 2, 4, 8] as const;
 
 /** Meteorological "from" degrees → eastward (u) / northward (v) m/s. */
 export function uvFromSpeedDir(speedMs: number, fromDeg: number): { u: number; v: number } {
@@ -65,7 +70,6 @@ export function sampleGrid(g: WindGrid, lon: number, lat: number): WindSample | 
 }
 
 function bil(a: number, b: number, c: number, d: number, tx: number, ty: number): number {
-    // Skip NaN corners so a sparse/partial fill still interpolates.
     const w00 = Number.isFinite(a) ? (1 - tx) * (1 - ty) : 0;
     const w10 = Number.isFinite(b) ? tx * (1 - ty) : 0;
     const w01 = Number.isFinite(c) ? (1 - tx) * ty : 0;
@@ -78,14 +82,16 @@ function bil(a: number, b: number, c: number, d: number, tx: number, ty: number)
         + (Number.isFinite(d) ? d * w11 : 0)) / w;
 }
 
-/** Fill leftover NaNs from the nearest valid sample (keeps streaks alive). */
+/** Only fill gaps from nearby lattice neighbors (not across the whole view). */
 function fillNaNs(u: Float32Array, v: Float32Array, nx: number, ny: number): number {
-    let filled = 0;
+    let valid = 0;
     for (let i = 0; i < u.length; i++) {
-        if (Number.isFinite(u[i]) && Number.isFinite(v[i])) {
-            filled++;
-            continue;
-        }
+        if (Number.isFinite(u[i]) && Number.isFinite(v[i])) valid++;
+    }
+    if (!valid) return 0;
+    const maxDist2 = 2 * 2; // ≤2 lattice steps
+    for (let i = 0; i < u.length; i++) {
+        if (Number.isFinite(u[i]) && Number.isFinite(v[i])) continue;
         const x0 = i % nx;
         const y0 = Math.floor(i / nx);
         let best = -1;
@@ -95,7 +101,7 @@ function fillNaNs(u: Float32Array, v: Float32Array, nx: number, ny: number): num
             const x1 = j % nx;
             const y1 = Math.floor(j / nx);
             const d = (x1 - x0) ** 2 + (y1 - y0) ** 2;
-            if (d < bestD) {
+            if (d < bestD && d <= maxDist2) {
                 bestD = d;
                 best = j;
             }
@@ -103,10 +109,10 @@ function fillNaNs(u: Float32Array, v: Float32Array, nx: number, ny: number): num
         if (best >= 0) {
             u[i] = u[best];
             v[i] = v[best];
-            filled++;
+            valid++;
         }
     }
-    return filled;
+    return valid;
 }
 
 function readBounds(b: {
@@ -143,15 +149,14 @@ function readBounds(b: {
     };
 }
 
-function viewBounds(): { west: number; east: number; south: number; north: number } | null {
+export function viewBounds(): { west: number; east: number; south: number; north: number } | null {
     const b = mapOf()?.getBounds?.();
     if (!b) return null;
     const raw = readBounds(b);
     if (!raw) return null;
     let { west, east, south, north } = raw;
-    // Modest pad — large pads explode the sample mesh on CONUS views.
-    const padLon = Math.min(4, (east - west) * 0.12);
-    const padLat = Math.min(3, (north - south) * 0.12);
+    const padLon = Math.min(2, (east - west) * 0.08);
+    const padLat = Math.min(1.5, (north - south) * 0.08);
     west = Math.max(-180, west - padLon);
     east = Math.min(180, east + padLon);
     south = Math.max(-85, south - padLat);
@@ -160,57 +165,143 @@ function viewBounds(): { west: number; east: number; south: number; north: numbe
     return { west, east, south, north };
 }
 
-/** Build a coarse lon/lat mesh (max ~20 points). */
+function snapDown(v: number, step: number): number {
+    return Math.floor(v / step + 1e-9) * step;
+}
+
+function snapUp(v: number, step: number): number {
+    return Math.ceil(v / step - 1e-9) * step;
+}
+
+/** Smallest lattice step that covers the view with ≤ maxPoints. */
+export function chooseStep(
+    west: number,
+    south: number,
+    east: number,
+    north: number,
+    maxPoints = MAX_POINTS,
+): number {
+    const spanLon = Math.max(0.05, east - west);
+    const spanLat = Math.max(0.05, north - south);
+    for (const step of STEPS) {
+        const nx = Math.floor(spanLon / step) + 2;
+        const ny = Math.floor(spanLat / step) + 2;
+        if (nx * ny <= maxPoints) return step;
+    }
+    return STEPS[STEPS.length - 1];
+}
+
+/**
+ * Build a mesh on a world-aligned lattice so the same geographic cell is reused
+ * across pan/zoom instead of shifting with the viewport corner.
+ */
 export function buildMesh(
     west: number,
     south: number,
     east: number,
     north: number,
     maxPoints = MAX_POINTS,
-): { lats: number[]; lons: number[]; nx: number; ny: number } {
-    const spanLon = Math.max(0.05, east - west);
-    const spanLat = Math.max(0.05, north - south);
-    let nx = Math.round(Math.sqrt(maxPoints * (spanLon / spanLat)));
-    let ny = Math.round(maxPoints / Math.max(1, nx));
-    nx = Math.max(3, Math.min(5, nx));
-    ny = Math.max(3, Math.min(4, ny));
-    while (nx * ny > maxPoints && (nx > 3 || ny > 3)) {
-        if (nx >= ny && nx > 3) nx--;
-        else if (ny > 3) ny--;
-        else break;
+): { lats: number[]; lons: number[]; nx: number; ny: number; step: number; west: number; east: number; south: number; north: number } {
+    let step = chooseStep(west, south, east, north, maxPoints);
+    let x0 = 0;
+    let y0 = 0;
+    let x1 = 0;
+    let y1 = 0;
+    let nx = 0;
+    let ny = 0;
+
+    for (let guard = 0; guard < STEPS.length; guard++) {
+        x0 = snapDown(west, step);
+        y0 = snapDown(south, step);
+        x1 = snapUp(east, step);
+        y1 = snapUp(north, step);
+        nx = Math.round((x1 - x0) / step) + 1;
+        ny = Math.round((y1 - y0) / step) + 1;
+        if (nx * ny <= maxPoints) break;
+        const idx = STEPS.indexOf(step as typeof STEPS[number]);
+        if (idx < 0 || idx >= STEPS.length - 1) break;
+        step = STEPS[idx + 1];
     }
+
+    // Last resort: thin the lattice evenly if still over cap.
+    while (nx * ny > maxPoints && (nx > 2 || ny > 2)) {
+        if (nx >= ny && nx > 2) {
+            nx--;
+            x1 = x0 + step * (nx - 1);
+        } else if (ny > 2) {
+            ny--;
+            y1 = y0 + step * (ny - 1);
+        } else break;
+    }
+
     const lats: number[] = [];
     const lons: number[] = [];
     for (let j = 0; j < ny; j++) {
-        const lat = south + ((north - south) * j) / Math.max(1, ny - 1);
+        const lat = Math.round((y0 + step * j) * 1000) / 1000;
         for (let i = 0; i < nx; i++) {
-            const lon = west + ((east - west) * i) / Math.max(1, nx - 1);
-            lats.push(Math.round(lat * 100) / 100);
-            lons.push(Math.round(lon * 100) / 100);
+            const lon = Math.round((x0 + step * i) * 1000) / 1000;
+            lats.push(lat);
+            lons.push(lon);
         }
     }
-    return { lats, lons, nx, ny };
+    return {
+        lats,
+        lons,
+        nx,
+        ny,
+        step,
+        west: x0,
+        east: x0 + step * Math.max(0, nx - 1),
+        south: y0,
+        north: y0 + step * Math.max(0, ny - 1),
+    };
 }
 
-export function boundsKey(b: { west: number; east: number; south: number; north: number }): string {
+export function boundsKey(b: {
+    west: number;
+    east: number;
+    south: number;
+    north: number;
+    step?: number;
+}): string {
+    const step = b.step ?? chooseStep(b.west, b.south, b.east, b.north);
+    const mesh = buildMesh(b.west, b.south, b.east, b.north);
     return [
-        b.west.toFixed(2),
-        b.south.toFixed(2),
-        b.east.toFixed(2),
-        b.north.toFixed(2),
+        mesh.west.toFixed(3),
+        mesh.south.toFixed(3),
+        mesh.east.toFixed(3),
+        mesh.north.toFixed(3),
+        step.toFixed(3),
+        String(mesh.nx),
+        String(mesh.ny),
     ].join('|');
+}
+
+/** True when an existing grid still covers the view at an acceptable density. */
+export function gridStillGood(
+    g: WindGrid,
+    view: { west: number; east: number; south: number; north: number },
+): boolean {
+    const marginLon = g.step * 0.25;
+    const marginLat = g.step * 0.25;
+    if (view.west < g.west - marginLon || view.east > g.east + marginLon) return false;
+    if (view.south < g.south - marginLat || view.north > g.north + marginLat) return false;
+    const want = chooseStep(view.west, view.south, view.east, view.north);
+    // Refetch when we need a meaningfully denser lattice (zoomed in a lot).
+    // Keep the coarser field while zoomed out inside coverage — avoids direction flips.
+    if (want < g.step * 0.55) return false;
+    return true;
 }
 
 export async function fetchWindGrid(signal?: AbortSignal): Promise<WindGrid | null> {
     const bounds = viewBounds();
     if (!bounds) return null;
-    const { west, east, south, north } = bounds;
-    const mesh = buildMesh(west, south, east, north);
-    // forecast_days=1 keeps request weight low on the free tier.
+    const mesh = buildMesh(bounds.west, bounds.south, bounds.east, bounds.north);
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${mesh.lats.join(',')}`
         + `&longitude=${mesh.lons.join(',')}`
         + '&current=wind_speed_10m,wind_direction_10m'
-        + '&wind_speed_unit=ms&timezone=UTC&forecast_days=1';
+        + '&wind_speed_unit=ms&timezone=UTC&forecast_days=1'
+        + '&cell_selection=nearest';
     const body = await fetchJson<OmPoint | OmPoint[]>(url, { signal });
     const rows = Array.isArray(body) ? body : [body];
     const u = new Float32Array(mesh.nx * mesh.ny);
@@ -231,10 +322,11 @@ export async function fetchWindGrid(signal?: AbortSignal): Promise<WindGrid | nu
     if (!filled) throw new Error('No wind samples in view');
     fillNaNs(u, v, mesh.nx, mesh.ny);
     return {
-        west,
-        east,
-        south,
-        north,
+        west: mesh.west,
+        east: mesh.east,
+        south: mesh.south,
+        north: mesh.north,
+        step: mesh.step,
         nx: mesh.nx,
         ny: mesh.ny,
         u,

@@ -363,7 +363,7 @@ const windRows = [
 ];
 
 const moreRows = [
-    { id: 'fire_outlook', label: 'Fire Outlook', opacity: true },
+    { id: 'fire_outlook', label: 'Fire Outlook', opacity: false },
     { id: 'fw_zones', label: 'Fire Zones', opacity: false },
     { id: 'fuel_moisture', label: 'Fuel Moisture', opacity: false },
     { id: 'smoke', label: 'Smoke', opacity: true },

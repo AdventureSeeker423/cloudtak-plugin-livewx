@@ -20,6 +20,8 @@ import {
 const SOURCE_ID = 'livewx-rgauge-src';
 const CIRCLE_ID = 'livewx-rgauge-circle';
 const POLL_MS = 15 * 60_000;
+/** USGS NWIS IV rejects large bBoxes (about >5° on a side → HTTP 400). */
+const USGS_MAX_SPAN_DEG = 4.5;
 
 let running = false;
 let data: FeatureCollection = emptyFc();
@@ -231,6 +233,35 @@ function paint(map: LiveWxMap): void {
     }
 }
 
+/** Shrink a bbox to USGS's max span, keeping the map center. */
+function clampUsgsBBox(
+    west: number,
+    south: number,
+    east: number,
+    north: number,
+): { west: number; south: number; east: number; north: number; clamped: boolean } {
+    const cx = (west + east) / 2;
+    const cy = (south + north) / 2;
+    let halfW = (east - west) / 2;
+    let halfH = (north - south) / 2;
+    let clamped = false;
+    if (halfW * 2 > USGS_MAX_SPAN_DEG) {
+        halfW = USGS_MAX_SPAN_DEG / 2;
+        clamped = true;
+    }
+    if (halfH * 2 > USGS_MAX_SPAN_DEG) {
+        halfH = USGS_MAX_SPAN_DEG / 2;
+        clamped = true;
+    }
+    return {
+        west: cx - halfW,
+        south: cy - halfH,
+        east: cx + halfW,
+        north: cy + halfH,
+        clamped,
+    };
+}
+
 async function refresh(): Promise<void> {
     const env = mapEnvelope();
     if (!env) {
@@ -243,11 +274,19 @@ async function refresh(): Promise<void> {
         return;
     }
     try {
-        const usgsUrl = `https://waterservices.usgs.gov/nwis/iv/?format=json`
-            + `&bBox=${west.toFixed(3)},${south.toFixed(3)},${east.toFixed(3)},${north.toFixed(3)}`
-            + `&parameterCd=00045&period=P1D&siteStatus=active`;
-        const usgsRaw = await fetchJson(usgsUrl);
-        const usgsFeats = parseUsgs(usgsRaw);
+        const box = clampUsgsBBox(west, south, east, north);
+        let usgsFeats: FeatureCollection['features'] = [];
+        let usgsNote = '';
+        try {
+            const usgsUrl = `https://waterservices.usgs.gov/nwis/iv/?format=json`
+                + `&bBox=${box.west.toFixed(3)},${box.south.toFixed(3)},${box.east.toFixed(3)},${box.north.toFixed(3)}`
+                + `&parameterCd=00045&period=P1D&siteStatus=active`;
+            const usgsRaw = await fetchJson(usgsUrl);
+            usgsFeats = parseUsgs(usgsRaw);
+            if (box.clamped) usgsNote = 'USGS: zoom in for wider coverage';
+        } catch {
+            usgsNote = 'USGS unavailable';
+        }
 
         let cocoFeats: FeatureCollection['features'] = [];
         try {
@@ -262,7 +301,7 @@ async function refresh(): Promise<void> {
             features: [...usgsFeats, ...cocoFeats],
         };
         featureCount = data.features.length;
-        lastError = '';
+        lastError = featureCount === 0 && usgsNote ? usgsNote : '';
         const map = mapOf();
         if (map && running) paint(map);
     } catch (e) {

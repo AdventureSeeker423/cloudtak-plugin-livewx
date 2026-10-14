@@ -7,6 +7,7 @@ import { mapOf } from '../core/map-host.ts';
 import { state } from '../core/state.ts';
 import { createGeoLayer, arcgisQueryUrl, mapEnvelope } from './geo-layer.ts';
 import { getLayerOpacity, registerLayer } from './registry.ts';
+import { registerFireOutlookLayer } from './fire-outlook.ts';
 import { registerFuelMoistureLayer } from './fuels.ts';
 import { registerMetarLayer } from './metars.ts';
 import { registerRainGaugesLayer } from './rain-gauges.ts';
@@ -104,22 +105,7 @@ export function registerCatalogLayers(): void {
         opacity: 0.7,
     });
 
-    registerWmsLayer({
-        id: 'fire_outlook',
-        group: 'more',
-        label: 'Fire Outlook',
-        description: 'SPC fire weather Day 1–2',
-        hosts: ['mapservices.weather.noaa.gov'],
-        sends: 'Tiles',
-        sourceId: 'livewx-fwo-src',
-        layerId: 'livewx-fwo-lyr',
-        tileUrl: () => arcgisExportTileUrl(
-            `${MAPSERVICES_NWS}/vector/rest/services/fire_weather/SPC_firewx/MapServer`,
-            'map',
-            { layers: 'show:1,2' },
-        ),
-        opacity: 0.65,
-    });
+    registerFireOutlookLayer();
 
     createGeoLayer({
         id: 'fw_zones',
