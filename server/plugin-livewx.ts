@@ -9,6 +9,7 @@
  * Export signature must match other plugin routes (e.g. plugin-qpd.ts):
  *   export default async function router(schema, config)
  */
+import { gunzipSync } from 'node:zlib';
 import { Type } from '@sinclair/typebox';
 import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
@@ -282,11 +283,15 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             const upstreamRes = await fetch(upstreamHref, {
                 headers: {
                     Accept: 'application/geo+json, application/json, image/*, */*',
+                    // Ask for an uncompressed body: on some CloudTAK API runtimes
+                    // fetch() hands back gzip bytes undecoded and without the
+                    // upstream content-type, which breaks JSON parsing in the client.
+                    'Accept-Encoding': 'identity',
                     'User-Agent': 'CloudTAK-LiveWX-Relay/2.0',
                 },
             });
-            const ct = upstreamRes.headers.get('content-type') || 'application/octet-stream';
-            const buf = Buffer.from(await upstreamRes.arrayBuffer());
+            const buf = decodeBody(Buffer.from(await upstreamRes.arrayBuffer()));
+            const ct = upstreamRes.headers.get('content-type') || sniffContentType(buf);
             // MapLibre raster tiles must be real images — WMS often returns XML
             // ServiceExceptions with HTTP 200; ArcGIS may return HTML error pages.
             const wantsImage = /(?:GetMap|exportImage|\/export\b|format=png)/i.test(upstreamHref);
@@ -305,6 +310,23 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             Err.respond(err, res);
         }
     });
+}
+
+/** Gunzip a body that still carries the gzip magic bytes (left undecoded upstream). */
+function decodeBody(buf: Buffer): Buffer {
+    if (buf.length < 2 || buf[0] !== 0x1f || buf[1] !== 0x8b) return buf;
+    try {
+        return gunzipSync(buf);
+    } catch {
+        return buf;
+    }
+}
+
+/** Content type for a body whose upstream header was missing. */
+function sniffContentType(buf: Buffer): string {
+    const head = buf.subarray(0, 64).toString('utf8').trimStart();
+    if (head.startsWith('{') || head.startsWith('[')) return 'application/json';
+    return 'application/octet-stream';
 }
 
 /** Rebuild an absolute HTTPS URL with properly encoded query values. */
