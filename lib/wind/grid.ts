@@ -83,7 +83,7 @@ function bil(a: number, b: number, c: number, d: number, tx: number, ty: number)
 }
 
 /** Only fill gaps from nearby lattice neighbors (not across the whole view). */
-function fillNaNs(u: Float32Array, v: Float32Array, nx: number, ny: number): number {
+function fillNaNs(u: Float32Array, v: Float32Array, nx: number): number {
     let valid = 0;
     for (let i = 0; i < u.length; i++) {
         if (Number.isFinite(u[i]) && Number.isFinite(v[i])) valid++;
@@ -344,7 +344,7 @@ export async function fetchWindGrid(signal?: AbortSignal): Promise<WindGrid | nu
         filled++;
     }
     if (!filled) throw new Error('No wind samples in view');
-    fillNaNs(u, v, mesh.nx, mesh.ny);
+    fillNaNs(u, v, mesh.nx);
     return {
         west: mesh.west,
         east: mesh.east,
