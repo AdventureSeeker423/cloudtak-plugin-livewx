@@ -382,12 +382,14 @@ function onMapClick(e: {
     const meta = registry.get(hit.layer.id);
     if (!meta) return;
     const props = (hit.properties || {}) as Record<string, unknown>;
+    // Narrowing of e.lngLat does not carry into the async closure.
+    const lngLat = e.lngLat;
     // MapLibre may stringify nested props; keep primitives.
     void (async () => {
         const html = meta.detailHtml
             ? await meta.detailHtml(props)
             : propertiesHtml(meta.label, props, meta.titleKeys);
-        await showFeatureHtml(map, e.lngLat, html);
+        await showFeatureHtml(map, lngLat, html);
     })();
 }
 

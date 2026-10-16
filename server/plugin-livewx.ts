@@ -107,7 +107,7 @@ async function loadWsCtor(): Promise<(new (url: string) => WsLike) | null> {
     if (wsLoadAttempted) return wsCtor ?? null;
     wsLoadAttempted = true;
     // Prefer Node built-in WebSocket (Node 22+) so we do not hard-depend on `ws`.
-    const g = globalThis as { WebSocket?: new (url: string) => WsLike };
+    const g = globalThis as unknown as { WebSocket?: new (url: string) => WsLike };
     if (typeof g.WebSocket === 'function') {
         wsCtor = g.WebSocket;
         return wsCtor;
