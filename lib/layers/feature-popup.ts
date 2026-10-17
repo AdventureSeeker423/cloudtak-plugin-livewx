@@ -7,6 +7,8 @@ import { pointUi } from '../core/point.ts';
 import { SURFACE_BG, SURFACE_BORDER, SURFACE_FG, syncSidebarTheme } from '../core/theme.ts';
 
 const POPUP_STYLE_ID = 'livewx-alert-popup-style';
+const LINK_CLASS = 'livewx-popup-link';
+const LINK_WINDOW_NAME = 'livewx-link';
 const SKIP_KEYS = new Set([
     'objectid', 'fid', 'globalid', 'shape', 'shape_length', 'shape_area',
     'st_area(shape)', 'st_length(shape)', 'geometry', 'geom',
@@ -25,6 +27,7 @@ const registry = new Map<string, LayerMeta>();
 let popup: { remove: () => void } | null = null;
 let clickBound = false;
 let hoverBound = false;
+let linkBound = false;
 
 function ensurePopupStyle(): void {
     if (document.getElementById(POPUP_STYLE_ID)) return;
@@ -117,6 +120,14 @@ function ensurePopupStyle(): void {
     margin: 0;
     overflow-wrap: anywhere;
 }
+.livewx-popup-link {
+    color: var(--tblr-link-color, var(--tblr-primary, #4dabf7));
+    text-decoration: underline;
+    cursor: pointer;
+}
+.livewx-popup-link:hover {
+    text-decoration: none;
+}
 .livewx-metar-raw {
     margin: 0.85em 0 0;
     padding-top: 0.7em;
@@ -191,6 +202,7 @@ export async function showFeatureHtml(
     html: string,
 ): Promise<void> {
     ensurePopupStyle();
+    ensureLinkHandler();
     syncSidebarTheme();
     closeFeaturePopup();
     try {
@@ -264,6 +276,65 @@ function formatValue(raw: unknown): string | null {
     return String(raw);
 }
 
+/** The value as an http(s) URL when the whole property is one, else undefined. */
+function linkUrl(raw: unknown): string | undefined {
+    if (typeof raw !== 'string') return undefined;
+    const t = raw.trim();
+    if (!/^https?:\/\/\S+$/i.test(t)) return undefined;
+    try {
+        const u = new URL(t);
+        return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+/** Anchor for a popup value; clicks are routed to openLinkWindow. */
+export function linkHtml(url: string, text = url): string {
+    return `<a class="${LINK_CLASS}" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(text)}</a>`;
+}
+
+/** Open a URL in a small, centered, reused browser window (new tab where popups are unsupported). */
+export function openLinkWindow(url: string): void {
+    const sw = window.screen?.availWidth || window.innerWidth;
+    const sh = window.screen?.availHeight || window.innerHeight;
+    const width = Math.min(900, Math.round(sw * 0.8));
+    const height = Math.min(700, Math.round(sh * 0.8));
+    const left = Math.max(0, Math.round((sw - width) / 2));
+    const top = Math.max(0, Math.round((sh - height) / 2));
+    const win = window.open(
+        url,
+        LINK_WINDOW_NAME,
+        `popup,width=${width},height=${height},left=${left},top=${top}`,
+    );
+    if (!win) {
+        // Popup blocked — fall back to a normal new tab.
+        window.open(url, '_blank', 'noopener,noreferrer');
+        return;
+    }
+    try { win.opener = null; } catch { /* ignore */ }
+    win.focus();
+}
+
+/**
+ * Popup HTML goes through setHTML, and CloudTAK's CSP blocks inline onclick,
+ * so link clicks are caught with one delegated document listener.
+ */
+function onLinkClick(e: MouseEvent): void {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const target = e.target as Element | null;
+    const a = target?.closest?.(`a.${LINK_CLASS}`) as HTMLAnchorElement | null;
+    if (!a?.href) return;
+    e.preventDefault();
+    openLinkWindow(a.href);
+}
+
+function ensureLinkHandler(): void {
+    if (linkBound) return;
+    document.addEventListener('click', onLinkClick);
+    linkBound = true;
+}
+
 function propGet(props: Record<string, unknown>, key: string): unknown {
     if (key in props) return props[key];
     const lower = key.toLowerCase();
@@ -299,7 +370,7 @@ export function propertiesHtml(
     }
     if (!title) title = label;
 
-    const rows: Array<{ k: string; v: string }> = [];
+    const rows: Array<{ k: string; v: string; url?: string }> = [];
     const used = new Set<string>();
     for (const [key, raw] of Object.entries(props)) {
         const lk = key.toLowerCase();
@@ -313,7 +384,7 @@ export function propertiesHtml(
             continue;
         }
         if (lk === 'place' && title.includes(v)) continue;
-        rows.push({ k: humanizeKey(key), v });
+        rows.push({ k: humanizeKey(key), v, url: linkUrl(raw) });
         if (rows.length >= 24) break;
     }
 
@@ -324,7 +395,7 @@ export function propertiesHtml(
     if (rows.length) {
         parts.push(
             `<dl class="livewx-alert-dl">${rows.map((r) =>
-                `<dt>${escapeHtml(r.k)}</dt><dd>${escapeHtml(r.v)}</dd>`,
+                `<dt>${escapeHtml(r.k)}</dt><dd>${r.url ? linkHtml(r.url, r.v) : escapeHtml(r.v)}</dd>`,
             ).join('')}</dl>`,
         );
     }
@@ -436,6 +507,11 @@ function teardownHandlers(): void {
             } catch { /* ignore */ }
         }
     }
+    if (linkBound) {
+        // Re-added by the next showFeatureHtml (alerts still use the popup).
+        document.removeEventListener('click', onLinkClick);
+    }
     clickBound = false;
     hoverBound = false;
+    linkBound = false;
 }
