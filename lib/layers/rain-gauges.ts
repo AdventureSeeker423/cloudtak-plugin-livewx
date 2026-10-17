@@ -6,7 +6,8 @@ import type { FeatureCollection } from '../core/geojson.ts';
 import { firstSymbolLayer, mapOf } from '../core/map-host.ts';
 import type { LiveWxMap } from '../core/map-types.ts';
 import { usStateAtMapCenter } from '../core/us-state.ts';
-import { escapeHtml, registerFeatureLayers, unregisterFeatureLayers } from './feature-popup.ts';
+import { DROPLET_SEARCH_ICON, ensureMapIcons, removeMapIcons } from '../core/map-icons.ts';
+import { escapeHtml, linkHtml, registerFeatureLayers, unregisterFeatureLayers } from './feature-popup.ts';
 import { mapEnvelope } from './geo-layer.ts';
 import {
     emptyFc,
@@ -19,6 +20,9 @@ import {
 
 const SOURCE_ID = 'livewx-rgauge-src';
 const CIRCLE_ID = 'livewx-rgauge-circle';
+const ICON_ID = 'livewx-rgauge-icon';
+/** Circle + icon layers; clicks on either open the popup. */
+const POPUP_IDS = [CIRCLE_ID, ICON_ID];
 const POLL_MS = 15 * 60_000;
 /** USGS NWIS IV rejects large bBoxes (about >5° on a side → HTTP 400). */
 const USGS_MAX_SPAN_DEG = 4.5;
@@ -203,10 +207,12 @@ function detailHtml(props: Record<string, unknown>): string {
         ['Observed', String(props.observed || '—')],
         ['ID', String(props.id || '')],
     ];
-    if (props.url) rows.push(['Link', String(props.url)]);
-    const dl = rows.map(([k, v]) =>
+    let dl = rows.map(([k, v]) =>
         `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`,
     ).join('');
+    // Clickable like other popup URLs (opens in the small window).
+    const url = String(props.url || '');
+    if (/^https?:\/\//i.test(url)) dl += `<dt>Link</dt><dd>${linkHtml(url)}</dd>`;
     return `<div class="livewx-alert-card"><div class="livewx-alert-title">${name}</div><dl class="livewx-alert-dl">${dl}</dl></div>`;
 }
 
@@ -222,14 +228,29 @@ function paint(map: LiveWxMap): void {
                 'circle-radius': [
                     'case',
                     ['==', ['get', 'source'], 'USGS'],
-                    6,
-                    5,
+                    11,
+                    10,
                 ],
+                // Same color as the legend (precip amount).
                 'circle-color': ['get', 'color'],
                 'circle-stroke-width': 1,
                 'circle-stroke-color': '#fff',
             },
         }, before);
+    }
+    // Style swaps drop images, so (re-)add the icon on every paint.
+    if (ensureMapIcons(map, [DROPLET_SEARCH_ICON]) && !map.getLayer(ICON_ID)) {
+        map.addLayer({
+            id: ICON_ID,
+            type: 'symbol',
+            source: SOURCE_ID,
+            layout: {
+                'icon-image': DROPLET_SEARCH_ICON.id,
+                'icon-size': ['case', ['==', ['get', 'source'], 'USGS'], 1, 0.9],
+                'icon-allow-overlap': true,
+                'icon-ignore-placement': true,
+            },
+        });
     }
 }
 
@@ -342,7 +363,7 @@ export function registerRainGaugesLayer(): void {
         sends: 'Map extent / state',
         start: async () => {
             running = true;
-            registerFeatureLayers([CIRCLE_ID], {
+            registerFeatureLayers(POPUP_IDS, {
                 label: 'Rain Gauges',
                 titleKeys: ['name', 'inchesLabel'],
                 detailHtml,
@@ -360,18 +381,20 @@ export function registerRainGaugesLayer(): void {
                 pollTimer = null;
             }
             unbindMove();
-            unregisterFeatureLayers([CIRCLE_ID]);
+            unregisterFeatureLayers(POPUP_IDS);
             const map = mapOf();
             if (map) {
+                removeLayerSafe(map, ICON_ID);
                 removeLayerSafe(map, CIRCLE_ID);
                 removeSourceSafe(map, SOURCE_ID);
+                removeMapIcons(map, [DROPLET_SEARCH_ICON]);
             }
             data = emptyFc();
             featureCount = 0;
         },
         restore: (map) => {
             if (!running) return;
-            registerFeatureLayers([CIRCLE_ID], {
+            registerFeatureLayers(POPUP_IDS, {
                 label: 'Rain Gauges',
                 titleKeys: ['name', 'inchesLabel'],
                 detailHtml,
