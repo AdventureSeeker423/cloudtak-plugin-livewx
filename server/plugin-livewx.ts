@@ -290,8 +290,12 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                     'User-Agent': 'CloudTAK-LiveWX-Relay/2.0',
                 },
             });
-            const buf = decodeBody(Buffer.from(await upstreamRes.arrayBuffer()));
-            const ct = upstreamRes.headers.get('content-type') || sniffContentType(buf);
+            const upstreamCt = upstreamRes.headers.get('content-type');
+            const upstreamBody = Buffer.from(await upstreamRes.arrayBuffer());
+            // Never unpack a file that is gzip by design (e.g. the AWC METAR
+            // cache .csv.gz) — the client decompresses those itself.
+            const buf = isGzipFile(upstreamHref, upstreamCt) ? upstreamBody : decodeBody(upstreamBody);
+            const ct = upstreamCt || sniffContentType(buf);
             // MapLibre raster tiles must be real images — WMS often returns XML
             // ServiceExceptions with HTTP 200; ArcGIS may return HTML error pages.
             const wantsImage = /(?:GetMap|exportImage|\/export\b|format=png)/i.test(upstreamHref);
@@ -310,6 +314,16 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             Err.respond(err, res);
         }
     });
+}
+
+/** True for resources that are gzip files themselves rather than gzip-encoded responses. */
+function isGzipFile(href: string, contentType: string | null): boolean {
+    if (contentType && /gzip/i.test(contentType)) return true;
+    try {
+        return /\.gz$/i.test(new URL(href).pathname);
+    } catch {
+        return false;
+    }
 }
 
 /** Gunzip a body that still carries the gzip magic bytes (left undecoded upstream). */
