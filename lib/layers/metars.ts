@@ -200,6 +200,9 @@ ${raw ? `<div class="livewx-metar-raw">
 }
 
 async function gunzipText(buf: ArrayBuffer): Promise<string> {
+    // A proxy may already have unpacked the .gz; plain text has no gzip magic bytes.
+    const head = new Uint8Array(buf, 0, Math.min(2, buf.byteLength));
+    if (head[0] !== 0x1f || head[1] !== 0x8b) return new TextDecoder().decode(buf);
     const DS = (globalThis as unknown as {
         DecompressionStream?: new (format: string) => GenericTransformStream;
     }).DecompressionStream;
