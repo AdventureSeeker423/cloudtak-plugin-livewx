@@ -88,7 +88,7 @@ async function fetchLayer(
     kind: 'outlook' | 'dryt',
 ): Promise<FeatureCollection['features']> {
     const url = `${MAPSERVICES_NWS}/vector/rest/services/fire_weather/SPC_firewx/MapServer/${layerId}/query`
-        + '?where=dn%3E0&outFields=dn,valid,expire&returnGeometry=true&outSR=4326&f=geojson';
+        + '?where=dn>0&outFields=dn,valid,expire&returnGeometry=true&outSR=4326&f=geojson';
     const fc = asFc(await fetchJson(url));
     const out: FeatureCollection['features'] = [];
     for (const f of fc.features) {
