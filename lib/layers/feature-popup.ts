@@ -4,7 +4,7 @@
 import type { LiveWxMap } from '../core/map-types.ts';
 import { mapOf } from '../core/map-host.ts';
 import { pointUi } from '../core/point.ts';
-import { SURFACE_BG, SURFACE_BORDER, SURFACE_FG, syncSidebarTheme } from '../core/theme.ts';
+import { SURFACE_BG, SURFACE_BORDER, SURFACE_FG, SURFACE_MUTED } from '../core/theme.ts';
 
 const POPUP_STYLE_ID = 'livewx-alert-popup-style';
 const SKIP_KEYS = new Set([
@@ -48,7 +48,7 @@ function ensurePopupStyle(): void {
     font: 13px/1.45 var(--tblr-font-sans-serif, system-ui, Segoe UI, sans-serif);
 }
 .livewx-alert-popup .maplibregl-popup-close-button {
-    color: var(--tblr-secondary, var(--bs-secondary-color, inherit));
+    color: ${SURFACE_MUTED};
     font-size: 18px;
     padding: 4px 8px;
 }
@@ -79,7 +79,7 @@ function ensurePopupStyle(): void {
     overflow: auto;
 }
 .livewx-alert-eyebrow {
-    color: var(--tblr-secondary, inherit);
+    color: ${SURFACE_MUTED};
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.04em;
@@ -116,7 +116,7 @@ function ensurePopupStyle(): void {
     gap: 0.35rem 0.65rem;
 }
 .livewx-alert-dl dt {
-    color: var(--tblr-secondary, inherit);
+    color: ${SURFACE_MUTED};
     font-weight: 600;
     margin: 0;
 }
@@ -130,7 +130,7 @@ function ensurePopupStyle(): void {
     border-top: 1px solid ${SURFACE_BORDER};
 }
 .livewx-metar-raw-label {
-    color: var(--tblr-secondary, inherit);
+    color: ${SURFACE_MUTED};
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.04em;
@@ -197,7 +197,6 @@ export async function showFeatureHtml(
     html: string,
 ): Promise<void> {
     ensurePopupStyle();
-    syncSidebarTheme();
     closeFeaturePopup();
     try {
         const ml = await import('maplibre-gl') as {

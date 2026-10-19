@@ -32,7 +32,6 @@ import type { RadarProduct } from './products.ts';
 import { refreshSiteMarkers, startSiteMarkers, stopSiteMarkers } from './site-markers.ts';
 import { findSite, isMosaic, toIemId } from './sites.ts';
 import { persist, setSite, state } from '../core/state.ts';
-import { syncSidebarTheme } from '../core/theme.ts';
 import {
     ensureFilterProtocol,
     fetchAvailableProducts,
@@ -348,7 +347,6 @@ export async function init(api: PluginAPI): Promise<void> {
     if (state.sitesOnMap) startSiteMarkers(api, onSitePicked);
     if (state.lightningEnabled) applyLightning();
     if (state.overlayEnabled) void setOverlayEnabled(true);
-    syncSidebarTheme();
 }
 
 export function destroy(): void {

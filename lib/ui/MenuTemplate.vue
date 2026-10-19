@@ -73,9 +73,8 @@ import {
 } from '@tabler/icons-vue';
 
 import { useRouter } from 'vue-router';
-import { computed, onMounted } from 'vue';
+import { computed } from 'vue';
 import { state, toggleLegendsVisible } from '../core/state.ts';
-import { syncSidebarTheme } from '../core/theme.ts';
 
 const router = useRouter();
 
@@ -124,23 +123,20 @@ const backType = computed(() => {
     }
     return 'back';
 });
-
-onMounted(() => {
-    syncSidebarTheme();
-});
 </script>
 
 <style scoped>
+/* No surface of its own: host MenuTemplate / panel tokens cover light and dark. */
 .livewx-shell {
-    color: var(--livewx-fg, var(--cloudtak-surface-color, inherit));
-    background: var(--livewx-bg, var(--cloudtak-surface-bg, var(--cloudtak-panel-bg, transparent))) !important;
-    border-color: var(--livewx-border, var(--cloudtak-surface-border, transparent));
+    color: var(--cloudtak-surface-color, var(--tblr-body-color, inherit));
+    background: var(--cloudtak-panel-bg, var(--cloudtak-surface-bg, transparent)) !important;
+    border-color: var(--cloudtak-surface-border, transparent);
     box-shadow: none;
 }
 .livewx-shell :deep(.card-header) {
     color: inherit;
     background: transparent !important;
-    border-color: var(--livewx-border, var(--cloudtak-surface-border, var(--tblr-border-color, transparent)));
+    border-color: var(--cloudtak-surface-border, var(--tblr-border-color, transparent));
 }
 .livewx-shell :deep(.card-body) {
     background: transparent;
@@ -150,6 +146,13 @@ onMounted(() => {
 .livewx-shell :deep(.form-label),
 .livewx-shell :deep(.form-check-label) {
     color: inherit;
+}
+.livewx-shell :deep(.form-range) {
+    accent-color: var(--tblr-primary);
+}
+.livewx-shell :deep(.text-secondary),
+.livewx-shell :deep(.form-hint) {
+    color: var(--tblr-secondary-color, var(--tblr-secondary, inherit)) !important;
 }
 .livewx-legends-btn {
     white-space: nowrap;

@@ -469,7 +469,7 @@ function onLifetime(ev: Event): void {
     margin-top: 0;
 }
 .sec {
-    border-bottom: 1px solid var(--livewx-border, var(--tblr-border-color, #333));
+    border-bottom: 1px solid var(--cloudtak-surface-border, var(--tblr-border-color, rgba(128, 128, 128, 0.3)));
     padding: 0.75rem 0;
 }
 .sec:first-child {
@@ -492,7 +492,7 @@ function onLifetime(ev: Event): void {
 }
 .sec-meta {
     font-size: 0.8rem;
-    color: var(--tblr-secondary, inherit);
+    color: var(--tblr-secondary-color, var(--tblr-secondary, inherit));
 }
 .opacity-row {
     margin-top: 0.35rem;

@@ -3,18 +3,9 @@ import { h } from 'vue';
 import type { PluginAPI, PluginInstance } from '@tak-ps/cloudtak';
 import MenuTemplate from './lib/ui/MenuTemplate.vue';
 import AppShell from './lib/ui/AppShell.vue';
-import IconRadarUrl from './lib/Radar.svg';
+import { IconLiveWx } from './lib/ui/icon.ts';
 import { MENU_KEY, ROUTE_NAME } from './lib/core/constants.ts';
 import { destroy, init } from './lib/plugin.ts';
-
-const IconRadar = {
-    render: () => h('img', {
-        src: IconRadarUrl,
-        width: 32,
-        height: 32,
-        alt: 'LiveWX',
-    }),
-};
 
 export default class LiveWxRadar implements PluginInstance {
     api: PluginAPI;
@@ -50,7 +41,7 @@ export default class LiveWxRadar implements PluginInstance {
             route: ROUTE_NAME,
             tooltip: 'LiveWX Weather',
             description: 'Forecast, radar, NWS alerts, lightning, fire/hydro/marine layers',
-            icon: IconRadar,
+            icon: IconLiveWx,
         });
     }
 

@@ -1,5 +1,5 @@
 import type { LiveWxMap } from './map-types.ts';
-import { SURFACE_BG, SURFACE_BORDER, SURFACE_FG, syncSidebarTheme } from './theme.ts';
+import { SURFACE_BG, SURFACE_BORDER, SURFACE_FG } from './theme.ts';
 import { radarUpdatedLabel } from '../radar/tiles.ts';
 
 const STYLE_ID = 'livewx-age-control-style';
@@ -117,7 +117,6 @@ export function attachRadarAgeControl(map: LiveWxMap): void {
         requestAnimationFrame(placeUnderScale);
     }
     if (visible) startTick();
-    syncSidebarTheme();
 }
 
 export function detachRadarAgeControl(): void {

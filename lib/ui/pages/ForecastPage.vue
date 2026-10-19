@@ -346,7 +346,7 @@ function reload(): void {
 .fc-block {
     padding: 0 0 0.85rem;
     margin-bottom: 0.85rem;
-    border-bottom: 1px solid var(--livewx-border, var(--tblr-border-color, #333));
+    border-bottom: 1px solid var(--cloudtak-surface-border, var(--tblr-border-color, rgba(128, 128, 128, 0.3)));
 }
 .fc-block:last-of-type {
     border-bottom: none;
@@ -360,12 +360,12 @@ function reload(): void {
 .fc-hint {
     margin: 0.4rem 0 0;
     font-size: 0.8rem;
-    color: var(--tblr-secondary, inherit);
+    color: var(--tblr-secondary-color, var(--tblr-secondary, inherit));
 }
 .fc-place {
     margin: 0.4rem 0 0;
     font-size: 0.85rem;
-    color: var(--tblr-secondary, inherit);
+    color: var(--tblr-secondary-color, var(--tblr-secondary, inherit));
 }
 .fc-fields {
     display: grid;
@@ -395,12 +395,12 @@ function reload(): void {
 }
 .fc-age {
     font-size: 0.8rem;
-    color: var(--tblr-secondary, inherit);
+    color: var(--tblr-secondary-color, var(--tblr-secondary, inherit));
 }
 .fc-attr {
     margin: 0.55rem 0 0;
     font-size: 0.8rem;
-    color: var(--tblr-secondary, inherit);
+    color: var(--tblr-secondary-color, var(--tblr-secondary, inherit));
 }
 .livewx-afd {
     white-space: pre-wrap;

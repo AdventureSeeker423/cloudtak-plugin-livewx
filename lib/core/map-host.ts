@@ -3,8 +3,6 @@
  */
 import type { PluginAPI } from '@tak-ps/cloudtak';
 import type { LiveWxMap } from './map-types.ts';
-import { syncSidebarTheme } from './theme.ts';
-
 export type LayerModule = {
     id: string;
     /** Re-attach sources/layers after basemap style swaps. */
@@ -62,7 +60,6 @@ export function initMapHost(api: PluginAPI): void {
         styleHandler = restack;
         map.on('style.load', styleHandler);
     }
-    syncSidebarTheme();
 }
 
 export function destroyMapHost(): void {

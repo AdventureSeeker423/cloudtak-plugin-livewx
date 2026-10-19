@@ -5,7 +5,7 @@ import { watch, type WatchStopHandle } from 'vue';
 import type { LiveWxMap } from '../core/map-types.ts';
 import { mapOf, registerModule } from '../core/map-host.ts';
 import { state } from '../core/state.ts';
-import { SURFACE_BG, SURFACE_BORDER, SURFACE_FG, syncSidebarTheme } from '../core/theme.ts';
+import { SURFACE_BG, SURFACE_BORDER, SURFACE_FG } from '../core/theme.ts';
 import type { UnitSystem } from '../core/units.ts';
 import { getProduct } from '../radar/products.ts';
 
@@ -400,7 +400,6 @@ export function attachLegendBar(map?: LiveWxMap | null): void {
         });
         moduleRegistered = true;
     }
-    syncSidebarTheme();
 }
 
 export function detachLegendBar(): void {

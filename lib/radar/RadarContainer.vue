@@ -561,7 +561,7 @@ function onReplayWheel(ev: WheelEvent): void {
     top: 0;
     font-size: 10px;
     line-height: 16px;
-    color: var(--tblr-secondary, var(--tblr-navbar-color, inherit));
+    color: var(--tblr-secondary-color, var(--tblr-secondary, var(--tblr-navbar-color, inherit)));
     transform: translateX(-50%);
     white-space: nowrap;
 }
@@ -583,9 +583,9 @@ function onReplayWheel(ev: WheelEvent): void {
     overflow-y: auto;
     margin-top: 2px;
     padding: 4px 0;
-    color: var(--livewx-fg, var(--cloudtak-surface-color, inherit));
-    background: var(--livewx-bg, var(--cloudtak-surface-bg, var(--cloudtak-panel-bg, inherit)));
-    border: 1px solid var(--livewx-border, var(--cloudtak-surface-border, var(--tblr-border-color, rgba(127, 127, 127, 0.35))));
+    color: var(--cloudtak-surface-color, var(--tblr-body-color, inherit));
+    background: var(--cloudtak-panel-bg, var(--cloudtak-surface-bg, var(--tblr-bg-surface, inherit)));
+    border: 1px solid var(--cloudtak-surface-border, var(--tblr-border-color, rgba(128, 128, 128, 0.3)));
     border-radius: 4px;
     box-shadow: var(--tblr-box-shadow-lg, 0 8px 20px rgba(0, 0, 0, 0.35));
 }
@@ -608,6 +608,6 @@ function onReplayWheel(ev: WheelEvent): void {
 .site-empty {
     padding: 8px 10px;
     font-size: 12px;
-    color: var(--tblr-secondary, inherit);
+    color: var(--tblr-secondary-color, var(--tblr-secondary, inherit));
 }
 </style>

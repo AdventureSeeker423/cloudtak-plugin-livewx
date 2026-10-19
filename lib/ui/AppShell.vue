@@ -37,7 +37,7 @@ defineProps<{ api: PluginAPI }>();
     color: inherit;
 }
 .livewx-chrome {
-    border-bottom: 1px solid var(--livewx-border, var(--tblr-border-color, #333));
+    border-bottom: 1px solid var(--cloudtak-surface-border, var(--tblr-border-color, rgba(128, 128, 128, 0.3)));
     padding-bottom: 0.5rem;
     margin-bottom: 0.75rem;
 }

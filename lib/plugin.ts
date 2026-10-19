@@ -6,7 +6,6 @@ import { refreshAuthToken } from './core/auth-token.ts';
 import { destroyMapHost, initMapHost } from './core/map-host.ts';
 import { destroyPointController, initPointController, refreshQueryPoint } from './core/point.ts';
 import { persist, state } from './core/state.ts';
-import { syncSidebarTheme } from './core/theme.ts';
 import { refreshForecast } from './forecast/engine.ts';
 import { registerBridgeLayers } from './layers/bridges.ts';
 import { registerCatalogLayers } from './layers/catalog.ts';
@@ -70,7 +69,6 @@ export async function init(api: PluginAPI): Promise<void> {
             .then(() => refreshQueryPoint())
             .then(() => refreshForecast());
     }, 5 * 60_000);
-    syncSidebarTheme();
 }
 
 export function destroy(): void {
