@@ -27,10 +27,17 @@ let clickBound = false;
 let hoverBound = false;
 
 function ensurePopupStyle(): void {
-    if (document.getElementById(POPUP_STYLE_ID)) return;
-    const el = document.createElement('style');
-    el.id = POPUP_STYLE_ID;
+    let el = document.getElementById(POPUP_STYLE_ID) as HTMLStyleElement | null;
+    if (!el) {
+        el = document.createElement('style');
+        el.id = POPUP_STYLE_ID;
+        document.head.appendChild(el);
+    }
     el.textContent = `
+/* Above livewx wind canvas (z-index: 1); MapLibre controls sit at 2. */
+.livewx-alert-popup {
+    z-index: 3;
+}
 .livewx-alert-popup .maplibregl-popup-content {
     color: ${SURFACE_FG};
     background: ${SURFACE_BG};
@@ -137,7 +144,6 @@ function ensurePopupStyle(): void {
     overflow-wrap: anywhere;
 }
 `;
-    document.head.appendChild(el);
 }
 
 export function escapeHtml(s: string): string {
