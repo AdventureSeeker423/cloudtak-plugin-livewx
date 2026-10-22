@@ -31,11 +31,28 @@ type OmPoint = {
     };
 };
 
-/** Hard cap — Open-Meteo free tier 429s large multi-location current queries. */
-const MAX_POINTS = 20;
+type WindMesh = {
+    lats: number[];
+    lons: number[];
+    nx: number;
+    ny: number;
+    step: number;
+    west: number;
+    east: number;
+    south: number;
+    north: number;
+};
 
-/** Nice lattice steps (degrees). Smaller = denser; grow past 8° for CONUS views. */
-const STEPS = [0.25, 0.5, 1, 2, 4, 8, 12, 16, 24, 32] as const;
+/** Cap multi-location current queries (Open-Meteo allows up to 1000). */
+const MAX_POINTS = 64;
+
+/** Power-of-2 nested lattice steps so parent cells coincide across zoom levels. */
+const STEPS = [0.25, 0.5, 1, 2, 4, 8] as const;
+
+const LON_MIN = -180;
+const LON_MAX = 180;
+const LAT_MIN = -90;
+const LAT_MAX = 90;
 
 /** Meteorological "from" degrees → eastward (u) / northward (v) m/s. */
 export function uvFromSpeedDir(speedMs: number, fromDeg: number): { u: number; v: number } {
@@ -157,8 +174,8 @@ export function viewBounds(): { west: number; east: number; south: number; north
     let { west, east, south, north } = raw;
     const padLon = Math.min(2, (east - west) * 0.08);
     const padLat = Math.min(1.5, (north - south) * 0.08);
-    west = Math.max(-180, west - padLon);
-    east = Math.min(180, east + padLon);
+    west = Math.max(LON_MIN, west - padLon);
+    east = Math.min(LON_MAX, east + padLon);
     south = Math.max(-85, south - padLat);
     north = Math.min(85, north + padLat);
     if (!(east > west) || !(north > south)) return null;
@@ -173,7 +190,28 @@ function snapUp(v: number, step: number): number {
     return Math.ceil(v / step - 1e-9) * step;
 }
 
-/** Smallest lattice step that covers the view with ≤ maxPoints. */
+function clampLon(lon: number): number {
+    return Math.max(LON_MIN, Math.min(LON_MAX, lon));
+}
+
+function clampLat(lat: number): number {
+    return Math.max(LAT_MIN, Math.min(LAT_MAX, lat));
+}
+
+function roundCoord(n: number): number {
+    return Math.round(n * 1000) / 1000;
+}
+
+function isValidSample(lat: number, lon: number): boolean {
+    return Number.isFinite(lat)
+        && Number.isFinite(lon)
+        && lat >= LAT_MIN
+        && lat <= LAT_MAX
+        && lon >= LON_MIN
+        && lon <= LON_MAX;
+}
+
+/** Smallest nested lattice step that covers the view with ≤ maxPoints. */
 export function chooseStep(
     west: number,
     south: number,
@@ -184,11 +222,75 @@ export function chooseStep(
     const spanLon = Math.max(0.05, east - west);
     const spanLat = Math.max(0.05, north - south);
     for (const step of STEPS) {
-        const nx = Math.floor(spanLon / step) + 2;
-        const ny = Math.floor(spanLat / step) + 2;
+        const x0 = Math.max(LON_MIN, snapDown(west, step));
+        const y0 = Math.max(LAT_MIN, snapDown(south, step));
+        const x1 = Math.min(LON_MAX, snapUp(east, step));
+        const y1 = Math.min(LAT_MAX, snapUp(north, step));
+        const nx = Math.max(1, Math.round((x1 - x0) / step) + 1);
+        const ny = Math.max(1, Math.round((y1 - y0) / step) + 1);
         if (nx * ny <= maxPoints) return step;
     }
     return STEPS[STEPS.length - 1];
+}
+
+/** Even spacing inside the view bbox — used when a nested lattice cannot fit the point cap. */
+function evenSpacingMesh(
+    west: number,
+    south: number,
+    east: number,
+    north: number,
+    maxPoints: number,
+): WindMesh {
+    const spanLon = Math.max(0.05, east - west);
+    const spanLat = Math.max(0.05, north - south);
+    const aspect = spanLon / spanLat;
+    let nx = Math.max(2, Math.round(Math.sqrt(maxPoints * aspect)));
+    let ny = Math.max(2, Math.floor(maxPoints / nx));
+    while (nx * ny > maxPoints && nx > 2) nx--;
+    while (nx * ny > maxPoints && ny > 2) ny--;
+    const dLon = spanLon / Math.max(1, nx - 1);
+    const dLat = spanLat / Math.max(1, ny - 1);
+    const step = Math.max(dLon, dLat);
+    const lats: number[] = [];
+    const lons: number[] = [];
+    const seen = new Set<string>();
+    for (let j = 0; j < ny; j++) {
+        const lat = clampLat(roundCoord(south + dLat * j));
+        for (let i = 0; i < nx; i++) {
+            const lon = clampLon(roundCoord(west + dLon * i));
+            const key = `${lat},${lon}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            lats.push(lat);
+            lons.push(lon);
+        }
+    }
+    // Rebuild as a dense row-major grid if clamp collapsed duplicates (rare at edges).
+    if (lats.length !== nx * ny) {
+        const uniqLons = [...new Set(lons)].sort((a, b) => a - b);
+        const uniqLats = [...new Set(lats)].sort((a, b) => a - b);
+        nx = uniqLons.length;
+        ny = uniqLats.length;
+        lats.length = 0;
+        lons.length = 0;
+        for (const lat of uniqLats) {
+            for (const lon of uniqLons) {
+                lats.push(lat);
+                lons.push(lon);
+            }
+        }
+    }
+    return {
+        lats,
+        lons,
+        nx,
+        ny,
+        step,
+        west: lons.length ? Math.min(...lons) : west,
+        east: lons.length ? Math.max(...lons) : east,
+        south: lats.length ? Math.min(...lats) : south,
+        north: lats.length ? Math.max(...lats) : north,
+    };
 }
 
 /**
@@ -202,68 +304,41 @@ export function buildMesh(
     east: number,
     north: number,
     maxPoints = MAX_POINTS,
-): { lats: number[]; lons: number[]; nx: number; ny: number; step: number; west: number; east: number; south: number; north: number } {
+): WindMesh {
     let step = chooseStep(west, south, east, north, maxPoints);
-    let x0 = snapDown(west, step);
-    let y0 = snapDown(south, step);
-    let x1 = snapUp(east, step);
-    let y1 = snapUp(north, step);
-    let nx = Math.round((x1 - x0) / step) + 1;
-    let ny = Math.round((y1 - y0) / step) + 1;
+    let x0 = Math.max(LON_MIN, snapDown(west, step));
+    let y0 = Math.max(LAT_MIN, snapDown(south, step));
+    let x1 = Math.min(LON_MAX, snapUp(east, step));
+    let y1 = Math.min(LAT_MAX, snapUp(north, step));
+    let nx = Math.max(1, Math.round((x1 - x0) / step) + 1);
+    let ny = Math.max(1, Math.round((y1 - y0) / step) + 1);
 
-    // Grow step until the lattice covering the *full* view fits the point cap.
+    // Grow through nested STEPS only; never invent non-nesting coarse steps.
     let guard = 0;
-    while (nx * ny > maxPoints && guard < 24) {
+    while (nx * ny > maxPoints && guard < STEPS.length) {
         guard++;
         const idx = STEPS.indexOf(step as typeof STEPS[number]);
-        if (idx >= 0 && idx < STEPS.length - 1) {
-            step = STEPS[idx + 1];
-        } else {
-            step *= 1.5;
-        }
-        x0 = snapDown(west, step);
-        y0 = snapDown(south, step);
-        x1 = snapUp(east, step);
-        y1 = snapUp(north, step);
-        nx = Math.round((x1 - x0) / step) + 1;
-        ny = Math.round((y1 - y0) / step) + 1;
+        if (idx < 0 || idx >= STEPS.length - 1) break;
+        step = STEPS[idx + 1];
+        x0 = Math.max(LON_MIN, snapDown(west, step));
+        y0 = Math.max(LAT_MIN, snapDown(south, step));
+        x1 = Math.min(LON_MAX, snapUp(east, step));
+        y1 = Math.min(LAT_MAX, snapUp(north, step));
+        nx = Math.max(1, Math.round((x1 - x0) / step) + 1);
+        ny = Math.max(1, Math.round((y1 - y0) / step) + 1);
     }
 
-    // Absolute fallback: even spacing across the full view (still full coverage).
-    if (nx * ny > maxPoints) {
-        const spanLon = Math.max(0.05, east - west);
-        const spanLat = Math.max(0.05, north - south);
-        const aspect = spanLon / spanLat;
-        nx = Math.max(2, Math.round(Math.sqrt(maxPoints * aspect)));
-        ny = Math.max(2, Math.floor(maxPoints / nx));
-        while (nx * ny > maxPoints && nx > 2) nx--;
-        while (nx * ny > maxPoints && ny > 2) ny--;
-        const dLon = spanLon / Math.max(1, nx - 1);
-        const dLat = spanLat / Math.max(1, ny - 1);
-        step = Math.max(dLon, dLat);
-        x0 = west;
-        y0 = south;
-        x1 = east;
-        y1 = north;
-        const lats: number[] = [];
-        const lons: number[] = [];
-        for (let j = 0; j < ny; j++) {
-            const lat = Math.round((y0 + dLat * j) * 1000) / 1000;
-            for (let i = 0; i < nx; i++) {
-                const lon = Math.round((x0 + dLon * i) * 1000) / 1000;
-                lats.push(lat);
-                lons.push(lon);
-            }
-        }
-        return { lats, lons, nx, ny, step, west: x0, east: x1, south: y0, north: y1 };
+    // Wide views (hemisphere / world): even spacing inside the clamped bbox.
+    if (nx * ny > maxPoints || !(x1 > x0) || !(y1 > y0)) {
+        return evenSpacingMesh(west, south, east, north, maxPoints);
     }
 
     const lats: number[] = [];
     const lons: number[] = [];
     for (let j = 0; j < ny; j++) {
-        const lat = Math.round((y0 + step * j) * 1000) / 1000;
+        const lat = clampLat(roundCoord(y0 + step * j));
         for (let i = 0; i < nx; i++) {
-            const lon = Math.round((x0 + step * i) * 1000) / 1000;
+            const lon = clampLon(roundCoord(x0 + step * i));
             lats.push(lat);
             lons.push(lon);
         }
@@ -274,10 +349,10 @@ export function buildMesh(
         nx,
         ny,
         step,
-        west: x0,
-        east: x0 + step * Math.max(0, nx - 1),
-        south: y0,
-        north: y0 + step * Math.max(0, ny - 1),
+        west: clampLon(x0),
+        east: clampLon(x0 + step * Math.max(0, nx - 1)),
+        south: clampLat(y0),
+        north: clampLat(y0 + step * Math.max(0, ny - 1)),
     };
 }
 
@@ -311,9 +386,9 @@ export function gridStillGood(
     if (view.west < g.west - marginLon || view.east > g.east + marginLon) return false;
     if (view.south < g.south - marginLat || view.north > g.north + marginLat) return false;
     const want = chooseStep(view.west, view.south, view.east, view.north);
-    // Refetch when we need a meaningfully denser lattice (zoomed in a lot).
-    // Keep the coarser field while zoomed out inside coverage — avoids direction flips.
-    if (want < g.step * 0.55) return false;
+    // Refetch only when zoomed in enough to need a much denser lattice.
+    // Keep the coarser field longer — avoids direction flips on mild zoom.
+    if (want < g.step * 0.35) return false;
     return true;
 }
 
@@ -321,8 +396,22 @@ export async function fetchWindGrid(signal?: AbortSignal): Promise<WindGrid | nu
     const bounds = viewBounds();
     if (!bounds) return null;
     const mesh = buildMesh(bounds.west, bounds.south, bounds.east, bounds.north);
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${mesh.lats.join(',')}`
-        + `&longitude=${mesh.lons.join(',')}`
+
+    const lats: number[] = [];
+    const lons: number[] = [];
+    const indexMap: number[] = [];
+    for (let i = 0; i < mesh.lats.length; i++) {
+        const lat = mesh.lats[i];
+        const lon = mesh.lons[i];
+        if (!isValidSample(lat, lon)) continue;
+        lats.push(lat);
+        lons.push(lon);
+        indexMap.push(i);
+    }
+    if (!lats.length) throw new Error('No valid wind sample coordinates');
+
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}`
+        + `&longitude=${lons.join(',')}`
         + '&current=wind_speed_10m,wind_direction_10m'
         + '&wind_speed_unit=ms&timezone=UTC&forecast_days=1'
         + '&cell_selection=nearest';
@@ -333,12 +422,13 @@ export async function fetchWindGrid(signal?: AbortSignal): Promise<WindGrid | nu
     u.fill(Number.NaN);
     v.fill(Number.NaN);
     let filled = 0;
-    for (let i = 0; i < rows.length && i < u.length; i++) {
-        const cur = rows[i]?.current;
+    for (let r = 0; r < rows.length && r < indexMap.length; r++) {
+        const cur = rows[r]?.current;
         const spd = cur?.wind_speed_10m;
         const dir = cur?.wind_direction_10m;
         if (spd == null || dir == null || !Number.isFinite(spd) || !Number.isFinite(dir)) continue;
         const uv = uvFromSpeedDir(spd, dir);
+        const i = indexMap[r];
         u[i] = uv.u;
         v[i] = uv.v;
         filled++;
