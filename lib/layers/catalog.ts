@@ -5,6 +5,7 @@ import { MAPSERVICES_NWS } from '../core/constants.ts';
 import type { LiveWxMap } from '../core/map-types.ts';
 import { mapOf } from '../core/map-host.ts';
 import { state } from '../core/state.ts';
+import { RIPPLE_ICON } from '../core/map-icons.ts';
 import { createGeoLayer, arcgisQueryUrl, mapEnvelope } from './geo-layer.ts';
 import { getLayerOpacity, registerLayer } from './registry.ts';
 import { registerFireOutlookLayer } from './fire-outlook.ts';
@@ -188,6 +189,8 @@ export function registerCatalogLayers(): void {
         sourceId: 'livewx-riv-src',
         circleId: 'livewx-riv-circle',
         circleColor: '#1c7ed6',
+        circleRadius: 11,
+        icon: RIPPLE_ICON,
         titleKeys: ['gaugelid', 'location', 'waterbody', 'name'],
         url: () => extentUrl(
             `${MAPSERVICES_NWS}/eventdriven/rest/services/water/riv_gauges/MapServer/0/query?where=1=1&outFields=*&returnGeometry=true&outSR=4326&f=geojson&resultRecordCount=500`,

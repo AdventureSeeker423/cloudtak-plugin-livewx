@@ -6,6 +6,7 @@ import type { FeatureCollection } from '../core/geojson.ts';
 import { emptyFeatureCollection } from '../core/geojson.ts';
 import type { LiveWxMap } from '../core/map-types.ts';
 import { firstSymbolLayer } from '../core/map-host.ts';
+import { ensureMapIcons, removeMapIcons, type MapIcon } from '../core/map-icons.ts';
 import {
     registerFeatureLayers,
     unregisterFeatureLayers,
@@ -40,6 +41,8 @@ export type GeoLayerOpts = {
     lineColor?: string;
     circleColor?: string | unknown[];
     circleRadius?: number;
+    /** Icon drawn on top of each circle (needs circleId); clicks open the same popup. */
+    icon?: MapIcon;
     pollMs?: number;
     /** Re-fetch when the map finishes panning/zooming (extent layers). */
     refreshOnMove?: boolean;
@@ -92,6 +95,7 @@ function asFc(raw: unknown): FeatureCollection {
 }
 
 export function createGeoLayer(opts: GeoLayerOpts): LayerDef {
+    const iconId = opts.icon && opts.circleId ? `${opts.circleId}-icon` : undefined;
     let timer: ReturnType<typeof setInterval> | null = null;
     let moveTimer: ReturnType<typeof setTimeout> | null = null;
     let moveHandler: (() => void) | null = null;
@@ -167,6 +171,19 @@ export function createGeoLayer(opts: GeoLayerOpts): LayerDef {
         } else if (opts.circleId && opts.circleColor != null && map.getLayer(opts.circleId)) {
             map.setPaintProperty?.(opts.circleId, 'circle-color', opts.circleColor);
         }
+        // Style swaps drop images, so (re-)add the icon on every paint.
+        if (iconId && opts.icon && ensureMapIcons(map, [opts.icon]) && !map.getLayer(iconId)) {
+            map.addLayer({
+                id: iconId,
+                type: 'symbol',
+                source: opts.sourceId,
+                layout: {
+                    'icon-image': opts.icon.id,
+                    'icon-allow-overlap': true,
+                    'icon-ignore-placement': true,
+                },
+            });
+        }
         opts.paintExtra?.(map);
     }
 
@@ -194,16 +211,18 @@ export function createGeoLayer(opts: GeoLayerOpts): LayerDef {
     }
 
     function paintIds(): string[] {
-        return [opts.fillId, opts.lineId, opts.circleId].filter((id): id is string => Boolean(id));
+        return [opts.fillId, opts.lineId, opts.circleId, iconId].filter((id): id is string => Boolean(id));
     }
 
     function clear(map: LiveWxMap | null): void {
         unregisterFeatureLayers(paintIds());
         if (!map) return;
+        if (iconId) removeLayerSafe(map, iconId);
         if (opts.fillId) removeLayerSafe(map, opts.fillId);
         if (opts.lineId) removeLayerSafe(map, opts.lineId);
         if (opts.circleId) removeLayerSafe(map, opts.circleId);
         removeSourceSafe(map, opts.sourceId);
+        if (opts.icon) removeMapIcons(map, [opts.icon]);
     }
 
     const def: LayerDef = {
