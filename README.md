@@ -54,7 +54,7 @@ The UI shows attribution and a non-warning disclaimer whenever live lightning is
 ## Install
 
 ```bash
-git clone https://github.com/AdventureSeeker423/cloudtak-plugin-livewx.git
+git clone https://github.com/ValleyTacticalSolutions/cloudtak-plugin-livewx.git
 cd cloudtak-plugin-livewx
 ./install.sh
 ```

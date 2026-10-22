@@ -37,7 +37,7 @@
 set -euo pipefail
 
 INSTALL_DIR_NAME="livewx-radar"
-PLUGIN_GIT_URL="${LIVEWX_GIT_URL:-https://github.com/AdventureSeeker423/cloudtak-plugin-livewx.git}"
+PLUGIN_GIT_URL="${LIVEWX_GIT_URL:-https://github.com/ValleyTacticalSolutions/cloudtak-plugin-livewx.git}"
 PLUGIN_GIT_REF="${LIVEWX_GIT_REF:-main}"
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
