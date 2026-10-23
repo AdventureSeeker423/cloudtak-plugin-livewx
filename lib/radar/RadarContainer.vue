@@ -38,160 +38,171 @@
         </label>
         <select
             id='livewx-radar-provider'
-            class='form-select mb-3'
+            class='form-select mb-1'
             :value='state.radarProvider'
             @change='onProvider'
         >
-            <option value='iem'>
-                IEM
-            </option>
             <option value='auto'>
-                Auto
+                Auto (by map)
+            </option>
+            <option value='iem'>
+                United States (NEXRAD / IEM)
+            </option>
+            <option value='canada'>
+                Canada (Environment Canada)
+            </option>
+            <option value='rainviewer'>
+                Global (RainViewer)
             </option>
         </select>
+        <p class='text-secondary small mb-3'>
+            {{ providerHint }}
+        </p>
 
-        <label
-            class='form-label mb-1'
-            for='livewx-site-search'
-        >
-            Site
-        </label>
-        <div
-            ref='siteComboEl'
-            class='site-combo mb-3'
-        >
-            <input
-                id='livewx-site-search'
-                class='form-control form-control-sm'
-                type='search'
-                autocomplete='off'
-                role='combobox'
-                aria-autocomplete='list'
-                aria-controls='livewx-site-list'
-                :aria-expanded='siteOpen ? "true" : "false"'
-                :placeholder='siteOpen ? "Search…" : selectedSiteLabel'
-                :value='siteOpen ? siteDraft : selectedSiteLabel'
-                @focus='onSiteFocus'
-                @input='onSiteDraft'
-                @keydown='onSiteKey'
-            >
-            <div
-                v-if='siteOpen'
-                id='livewx-site-list'
-                class='site-menu'
-                role='listbox'
-            >
-                <button
-                    v-for='(site, idx) in siteMatches'
-                    :key='site.id'
-                    class='site-option'
-                    :class='{ active: idx === siteHighlight }'
-                    type='button'
-                    role='option'
-                    :aria-selected='idx === siteHighlight ? "true" : "false"'
-                    @mousedown.prevent='pickSite(site.id)'
-                >
-                    {{ siteLabel(site) }}
-                </button>
-                <div
-                    v-if='siteDraft.trim() && !siteMatches.length'
-                    class='site-empty'
-                >
-                    No matches
-                </div>
-            </div>
-        </div>
-
-        <div class='form-check form-switch mb-3'>
-            <input
-                id='livewx-sites'
-                class='form-check-input'
-                type='checkbox'
-                :checked='state.sitesOnMap'
-                @change='onSitesToggle'
-            >
-            <label
-                class='form-check-label'
-                for='livewx-sites'
-            >
-                Sites on map
-            </label>
-        </div>
-
-        <div class='d-flex gap-2 align-items-end mb-3'>
-            <div class='livewx-product'>
-                <label
-                    class='form-label mb-1'
-                    for='livewx-product'
-                >
-                    Product
-                </label>
-                <select
-                    id='livewx-product'
-                    class='form-select form-select-sm'
-                    :value='state.productId'
-                    @change='onProduct'
-                >
-                    <optgroup
-                        v-for='group in productGroups'
-                        :key='group.group'
-                        :label='group.group'
-                    >
-                        <option
-                            v-for='product in group.products'
-                            :key='product.id'
-                            :value='product.id'
-                        >
-                            {{ product.label }}
-                        </option>
-                    </optgroup>
-                </select>
-            </div>
-            <div
-                v-if='tiltOptions.length > 1'
-                class='livewx-tilt'
-            >
-                <label
-                    class='form-label mb-1'
-                    for='livewx-tilt'
-                >
-                    Tilt
-                </label>
-                <select
-                    id='livewx-tilt'
-                    class='form-select form-select-sm'
-                    :value='state.tilt'
-                    @change='onTilt'
-                >
-                    <option
-                        v-for='tilt in tiltOptions'
-                        :key='tilt.index'
-                        :value='tilt.index'
-                    >
-                        {{ tilt.label }}
-                    </option>
-                </select>
-            </div>
-        </div>
-
-        <template v-if='filterAvailable'>
+        <template v-if='iemControls'>
             <label
                 class='form-label mb-1'
-                for='livewx-filter'
+                for='livewx-site-search'
             >
-                Filter {{ filterLabel }}
+                Site
             </label>
-            <input
-                id='livewx-filter'
-                class='form-range mb-3'
-                type='range'
-                min='0'
-                step='1'
-                :max='filterCeiling'
-                :value='state.filter'
-                @input='onFilter'
-                @wheel.prevent='onFilterWheel'
+            <div
+                ref='siteComboEl'
+                class='site-combo mb-3'
             >
+                <input
+                    id='livewx-site-search'
+                    class='form-control form-control-sm'
+                    type='search'
+                    autocomplete='off'
+                    role='combobox'
+                    aria-autocomplete='list'
+                    aria-controls='livewx-site-list'
+                    :aria-expanded='siteOpen ? "true" : "false"'
+                    :placeholder='siteOpen ? "Search…" : selectedSiteLabel'
+                    :value='siteOpen ? siteDraft : selectedSiteLabel'
+                    @focus='onSiteFocus'
+                    @input='onSiteDraft'
+                    @keydown='onSiteKey'
+                >
+                <div
+                    v-if='siteOpen'
+                    id='livewx-site-list'
+                    class='site-menu'
+                    role='listbox'
+                >
+                    <button
+                        v-for='(site, idx) in siteMatches'
+                        :key='site.id'
+                        class='site-option'
+                        :class='{ active: idx === siteHighlight }'
+                        type='button'
+                        role='option'
+                        :aria-selected='idx === siteHighlight ? "true" : "false"'
+                        @mousedown.prevent='pickSite(site.id)'
+                    >
+                        {{ siteLabel(site) }}
+                    </button>
+                    <div
+                        v-if='siteDraft.trim() && !siteMatches.length'
+                        class='site-empty'
+                    >
+                        No matches
+                    </div>
+                </div>
+            </div>
+
+            <div class='form-check form-switch mb-3'>
+                <input
+                    id='livewx-sites'
+                    class='form-check-input'
+                    type='checkbox'
+                    :checked='state.sitesOnMap'
+                    @change='onSitesToggle'
+                >
+                <label
+                    class='form-check-label'
+                    for='livewx-sites'
+                >
+                    Sites on map
+                </label>
+            </div>
+
+            <div class='d-flex gap-2 align-items-end mb-3'>
+                <div class='livewx-product'>
+                    <label
+                        class='form-label mb-1'
+                        for='livewx-product'
+                    >
+                        Product
+                    </label>
+                    <select
+                        id='livewx-product'
+                        class='form-select form-select-sm'
+                        :value='state.productId'
+                        @change='onProduct'
+                    >
+                        <optgroup
+                            v-for='group in productGroups'
+                            :key='group.group'
+                            :label='group.group'
+                        >
+                            <option
+                                v-for='product in group.products'
+                                :key='product.id'
+                                :value='product.id'
+                            >
+                                {{ product.label }}
+                            </option>
+                        </optgroup>
+                    </select>
+                </div>
+                <div
+                    v-if='tiltOptions.length > 1'
+                    class='livewx-tilt'
+                >
+                    <label
+                        class='form-label mb-1'
+                        for='livewx-tilt'
+                    >
+                        Tilt
+                    </label>
+                    <select
+                        id='livewx-tilt'
+                        class='form-select form-select-sm'
+                        :value='state.tilt'
+                        @change='onTilt'
+                    >
+                        <option
+                            v-for='tilt in tiltOptions'
+                            :key='tilt.index'
+                            :value='tilt.index'
+                        >
+                            {{ tilt.label }}
+                        </option>
+                    </select>
+                </div>
+            </div>
+
+            <template v-if='filterAvailable'>
+                <label
+                    class='form-label mb-1'
+                    for='livewx-filter'
+                >
+                    Filter {{ filterLabel }}
+                </label>
+                <input
+                    id='livewx-filter'
+                    class='form-range mb-3'
+                    type='range'
+                    min='0'
+                    step='1'
+                    :max='filterCeiling'
+                    :value='state.filter'
+                    @input='onFilter'
+                    @wheel.prevent='onFilterWheel'
+                >
+            </template>
         </template>
 
         <template v-if='frames.length'>
@@ -267,6 +278,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import type { PluginAPI } from '@tak-ps/cloudtak';
 import {
+    activeSource,
     currentProduct,
     applyFilter,
     applyOpacity,
@@ -289,6 +301,7 @@ import {
     setSite,
     setTilt,
     state,
+    type RadarProvider,
 } from '../core/state.ts';
 import { setLayerEnabled } from '../layers/registry.ts';
 import { ageLabel, shortAgeLabel } from './tiles.ts';
@@ -313,7 +326,21 @@ const productGroups = computed(() => {
 });
 const frames = computed(() => replayFramesRef.value);
 const current = computed(() => currentProduct());
+/** Site / product / tilt / filter only apply to the US NEXRAD (IEM) mosaic. */
+const iemControls = computed(() => activeSource.value === 'iem');
+const providerHint = computed(() => {
+    const src = activeSource.value;
+    if (state.radarProvider === 'auto') {
+        if (src === 'canada') return 'Auto → Canada (Environment Canada GeoMet)';
+        if (src === 'rainviewer') return 'Auto → Global (RainViewer)';
+        return 'Auto → United States (NEXRAD / IEM)';
+    }
+    if (src === 'canada') return 'Rain rate mosaic from Environment Canada';
+    if (src === 'rainviewer') return 'Worldwide public-radar composite';
+    return 'US NEXRAD mosaics and single-site RIDGE via IEM';
+});
 const filterAvailable = computed(() => {
+    if (!iemControls.value) return false;
     const kind = current.value?.filterKind;
     return kind === 'reflectivity' || kind === 'velocity';
 });
@@ -505,7 +532,8 @@ function onFilterWheel(ev: WheelEvent): void {
 }
 
 function onProvider(ev: Event): void {
-    state.radarProvider = (ev.target as HTMLSelectElement).value === 'auto' ? 'auto' : 'iem';
+    const v = (ev.target as HTMLSelectElement).value as RadarProvider;
+    state.radarProvider = v === 'canada' || v === 'rainviewer' || v === 'auto' ? v : 'iem';
     persist();
     void applyRadarSettings();
 }

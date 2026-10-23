@@ -24,8 +24,14 @@ export const IEM_TMS_BASE = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0
 export const IEM_JSON_BASE = 'https://mesonet.agron.iastate.edu/json';
 export const NWS_ALERTS_URL = 'https://api.weather.gov/alerts/active';
 export const RAINVIEWER_API = 'https://api.rainviewer.com/public/weather-maps.json';
+/** Environment Canada GeoMet WMS (Canada radar mosaic). */
+export const CANADA_GEOMET = 'https://geo.weather.gc.ca/geomet';
 export const NOWCOAST_WMS = 'https://nowcoast.noaa.gov/geoserver/weather_radar/wms';
 export const MAPSERVICES_NWS = 'https://mapservices.weather.noaa.gov';
+/** RainViewer tiles return a "zoom not supported" plate above this. */
+export const RAINVIEWER_MAXZOOM = 7;
+/** GeoMet radar is ~1 km; overzoom beyond this. */
+export const CANADA_MAXZOOM = 10;
 
 export const STORAGE_KEY = 'livewx-radar-settings';
 export const REFRESH_MS = 60_000;

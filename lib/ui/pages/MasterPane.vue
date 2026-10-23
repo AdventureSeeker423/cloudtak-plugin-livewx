@@ -35,7 +35,7 @@
                         <label
                             class='form-check-label'
                             for='m-radar'
-                        >NEXRAD Radar</label>
+                        >Radar</label>
                     </div>
                     <button
                         class='btn btn-sm btn-outline-secondary'

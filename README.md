@@ -92,7 +92,7 @@ Symlink this checkout to `CloudTAK/app/plugins/livewx-radar`, copy or symlink `s
 
 ## Attribution
 
-- Radar: [Iowa Environmental Mesonet](https://mesonet.agron.iastate.edu/ogc/), [RainViewer](https://www.rainviewer.com/)
+- Radar: [Iowa Environmental Mesonet](https://mesonet.agron.iastate.edu/ogc/) (US NEXRAD), [Environment Canada GeoMet](https://geo.weather.gc.ca/) (Canada), [RainViewer](https://www.rainviewer.com/) (global)
 - Forecast / alerts / many layers: [NWS API](https://www.weather.gov/documentation/services-web-api) and NOAA map services
 - Open-Meteo: [open-meteo.com](https://open-meteo.com/) (CC BY 4.0)
 - Lightning: [Blitzortung.org](https://www.blitzortung.org/) & contributors (CC BY-SA 4.0); display adapted from [cmlaird/CloudTAK-Plugin-Lightning](https://github.com/cmlaird/CloudTAK-Plugin-Lightning) (MIT)

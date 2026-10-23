@@ -4,9 +4,11 @@ import { stackAlertLayers, startAlerts, stopAlerts } from '../alerts/alerts.ts';
 import { attachRadarAgeControl, detachRadarAgeControl, setRadarAge } from '../core/age-control.ts';
 import {
     ALERT_LINE_ID,
+    CANADA_MAXZOOM,
     MOSAIC_MAXZOOM,
     RADAR_LAYER_ID,
     RADAR_SOURCE_ID,
+    RAINVIEWER_MAXZOOM,
     REFRESH_MS,
     RIDGE_MAXZOOM,
 } from '../core/constants.ts';
@@ -44,9 +46,13 @@ import {
     ageLabel,
     type ScanFrame,
 } from './tiles.ts';
-import { rainviewerTileUrl, fetchRainviewerHost } from './rainviewer.ts';
+import { canadaTileUrl, inCanadaSees } from './canada.ts';
+import { rainviewerTileUrl, fetchRainviewerHost, clearRainviewerCache } from './rainviewer.ts';
 
 type RasterSource = { setTiles?: (tiles: string[]) => void };
+
+/** Active mosaic: US NEXRAD (IEM), Canada GeoMet, or RainViewer world composite. */
+export type RadarSourceKind = 'iem' | 'canada' | 'rainviewer';
 
 let apiRef: PluginAPI | null = null;
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -60,6 +66,10 @@ export const liveValidAt = ref<number | null>(null);
 let lastSourceSig = '';
 let filterRaf = 0;
 let rainviewerHost: string | null = null;
+/** Resolved mosaic for the current provider + map center. */
+export const activeSource = ref<RadarSourceKind>('iem');
+let moveEndBound: (() => void) | null = null;
+let moveEndTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function currentProduct(): RadarProduct | undefined {
     return getProduct(state.productId);
@@ -85,18 +95,35 @@ function mapOf(): LiveWxMap | null {
     })();
 }
 
-function useRainviewer(): boolean {
-    if (state.radarProvider !== 'auto') return false;
-    const map = mapOf();
-    const c = map?.getCenter?.();
-    if (!c) return false;
-    // Outside rough NWS CONUS/AK/HI/PR boxes → RainViewer world composite
-    const { lat, lng } = c;
+/** Atmosphere-style coverage: US agency mosaics (incl. AK/HI/PR), then Canada, else world. */
+function inUsRadarSees(lat: number, lng: number): boolean {
     const inConus = lat > 24 && lat < 50 && lng > -125 && lng < -66;
     const inAk = lat > 51 && lat < 72 && lng > -170 && lng < -130;
     const inHi = lat > 18 && lat < 23 && lng > -161 && lng < -154;
     const inPr = lat > 17 && lat < 19 && lng > -68 && lng < -65;
-    return !(inConus || inAk || inHi || inPr);
+    return inConus || inAk || inHi || inPr;
+}
+
+/**
+ * Resolve which mosaic to draw.
+ * Explicit provider wins; Auto follows Atmosphere: US → IEM, Canada → GeoMet, else RainViewer.
+ */
+export function resolveRadarSource(): RadarSourceKind {
+    if (state.radarProvider === 'iem') return 'iem';
+    if (state.radarProvider === 'canada') return 'canada';
+    if (state.radarProvider === 'rainviewer') return 'rainviewer';
+    // auto
+    const map = mapOf();
+    const c = map?.getCenter?.();
+    if (!c) return 'iem';
+    const { lat, lng } = c;
+    if (inUsRadarSees(lat, lng)) return 'iem';
+    if (inCanadaSees(lat, lng)) return 'canada';
+    return 'rainviewer';
+}
+
+function useIemControls(): boolean {
+    return activeSource.value === 'iem';
 }
 
 function firstSymbolLayer(map: LiveWxMap): string | undefined {
@@ -122,12 +149,15 @@ function statusText(): string {
         return 'Overlay Off';
     }
     setRadarAge(currentImageAt(), true);
-    const product = currentProduct();
-    const site = findSite(state.siteId);
-    const where = site ? (isMosaic(site.id) ? 'CONUS mosaic' : site.id) : state.siteId;
     const frame = state.replayIndex >= 0 && frames[state.replayIndex]
         ? ageLabel(frames[state.replayIndex].at)
         : (liveValidAt.value != null ? `Live · ${ageLabel(liveValidAt.value)}` : 'Live');
+    const src = activeSource.value;
+    if (src === 'canada') return `Canada · GeoMet · ${frame}`;
+    if (src === 'rainviewer') return `Global · RainViewer · ${frame}`;
+    const product = currentProduct();
+    const site = findSite(state.siteId);
+    const where = site ? (isMosaic(site.id) ? 'CONUS mosaic' : site.id) : state.siteId;
     return `${where} · ${product?.label ?? state.productId} · ${frame}`;
 }
 
@@ -144,18 +174,30 @@ function displaySite(): { siteId: string; siteType: string; maxzoom: number } {
 }
 
 function applyTiles(map: LiveWxMap): void {
-    const product = currentProduct();
-    if (!product) return;
-    const display = displaySite();
+    const src = activeSource.value;
     let url: string;
-    let maxzoom = display.maxzoom;
-    let sigBase = `${display.siteId}|${display.maxzoom}`;
+    let maxzoom: number;
+    let sigBase: string;
 
-    if (useRainviewer() && rainviewerHost) {
-        url = rainviewerHost;
-        maxzoom = 12;
+    if (src === 'rainviewer' && rainviewerHost) {
+        // Replay uses frame stamp as RainViewer path; live uses cached host URL.
+        if (state.replayIndex >= 0 && frames[state.replayIndex]) {
+            const path = frames[state.replayIndex].stamp;
+            const host = 'https://tilecache.rainviewer.com';
+            url = rainviewerTileUrl(host, path);
+        } else {
+            url = rainviewerHost;
+        }
+        maxzoom = RAINVIEWER_MAXZOOM;
         sigBase = `rainviewer|${maxzoom}`;
+    } else if (src === 'canada') {
+        url = canadaTileUrl({ cacheBust });
+        maxzoom = CANADA_MAXZOOM;
+        sigBase = `canada|${maxzoom}`;
     } else {
+        const product = currentProduct();
+        if (!product) return;
+        const display = displaySite();
         const useProtocol = protocolOn && product.filterKind !== 'other';
         url = tileUrl({
             siteId: display.siteId,
@@ -166,6 +208,8 @@ function applyTiles(map: LiveWxMap): void {
             tilt: state.tilt,
             cacheBust,
         }, useProtocol);
+        maxzoom = display.maxzoom;
+        sigBase = `${display.siteId}|${display.maxzoom}`;
     }
 
     const sig = sigBase;
@@ -215,6 +259,10 @@ function removeRadarLayer(map: LiveWxMap): void {
 }
 
 async function loadAvailable(): Promise<void> {
+    if (!useIemControls()) {
+        availableCodes.value = null;
+        return;
+    }
     if (isMosaic(state.siteId)) {
         availableCodes.value = null;
         return;
@@ -242,6 +290,28 @@ async function loadAvailable(): Promise<void> {
 
 async function loadFrames(): Promise<void> {
     stopPlayTimer();
+    const src = activeSource.value;
+    if (src === 'canada') {
+        frames = [];
+        replayFramesRef.value = frames;
+        liveValidAt.value = Date.now();
+        return;
+    }
+    if (src === 'rainviewer') {
+        const rv = await fetchRainviewerHost();
+        if (rv) {
+            rainviewerHost = rainviewerTileUrl(rv.host, rv.path);
+            frames = rv.frames;
+            replayFramesRef.value = frames;
+            liveValidAt.value = frames.length ? frames[frames.length - 1].at : Date.now();
+        } else {
+            rainviewerHost = null;
+            frames = [];
+            replayFramesRef.value = frames;
+            liveValidAt.value = null;
+        }
+        return;
+    }
     if (isMosaic(state.siteId)) {
         const product = currentProduct();
         const loopable = product?.mosaicLayer === 'nexrad-n0q' || product?.mosaicLayer === 'nexrad-eet';
@@ -280,6 +350,17 @@ async function loadFrames(): Promise<void> {
     liveValidAt.value = frames.length ? frames[frames.length - 1].at : null;
 }
 
+/** Fetch RainViewer host path when needed; clear when switching away. */
+async function prepareExternalSource(src: RadarSourceKind): Promise<void> {
+    if (src === 'rainviewer') {
+        clearRainviewerCache();
+        const rv = await fetchRainviewerHost();
+        rainviewerHost = rv ? rainviewerTileUrl(rv.host, rv.path) : null;
+    } else {
+        rainviewerHost = null;
+    }
+}
+
 function stopPlayTimer(): void {
     if (playTimer) {
         clearInterval(playTimer);
@@ -292,24 +373,67 @@ function startRefresh(): void {
     if (refreshTimer) clearInterval(refreshTimer);
     refreshTimer = setInterval(() => {
         if (!state.overlayEnabled || state.replayIndex >= 0) return;
-        cacheBust = Date.now();
-        if (isMosaic(state.siteId)) {
-            void fetchMosaicValidAt().then((at) => {
-                if (at) liveValidAt.value = at;
-                state.status = statusText();
-            });
-        } else if (frames.length) {
-            liveValidAt.value = frames[frames.length - 1].at;
-        }
-        const map = mapOf();
-        if (map) applyTiles(map);
-        state.status = statusText();
+        void refreshLive();
     }, REFRESH_MS);
+}
+
+async function refreshLive(): Promise<void> {
+    if (!state.overlayEnabled || state.replayIndex >= 0) return;
+    const prev = activeSource.value;
+    activeSource.value = resolveRadarSource();
+    cacheBust = Date.now();
+    if (activeSource.value !== prev) {
+        await prepareExternalSource(activeSource.value);
+        await loadAvailable();
+        await loadFrames();
+    } else if (activeSource.value === 'rainviewer') {
+        clearRainviewerCache();
+        await loadFrames();
+    } else if (activeSource.value === 'canada') {
+        liveValidAt.value = Date.now();
+    } else if (isMosaic(state.siteId)) {
+        const at = await fetchMosaicValidAt();
+        if (at) liveValidAt.value = at;
+    } else if (frames.length) {
+        liveValidAt.value = frames[frames.length - 1].at;
+    }
+    const map = mapOf();
+    if (map) applyTiles(map);
+    state.status = statusText();
+}
+
+function attachMoveEnd(map: LiveWxMap): void {
+    detachMoveEnd(map);
+    moveEndBound = () => {
+        if (state.radarProvider !== 'auto' || !state.overlayEnabled) return;
+        if (moveEndTimer) clearTimeout(moveEndTimer);
+        moveEndTimer = setTimeout(() => {
+            moveEndTimer = null;
+            const next = resolveRadarSource();
+            if (next !== activeSource.value) void refreshLive();
+        }, 400);
+    };
+    map.on('moveend', moveEndBound);
+}
+
+function detachMoveEnd(map?: LiveWxMap | null): void {
+    if (moveEndTimer) {
+        clearTimeout(moveEndTimer);
+        moveEndTimer = null;
+    }
+    const m = map ?? mapOf();
+    if (m && moveEndBound) {
+        try { m.off('moveend', moveEndBound); } catch { /* ignore */ }
+    }
+    moveEndBound = null;
 }
 
 function onStyle(map: LiveWxMap): void {
     lastSourceSig = '';
-    if (state.overlayEnabled) ensureRadarLayer(map);
+    if (state.overlayEnabled) {
+        ensureRadarLayer(map);
+        attachMoveEnd(map);
+    }
     attachRadarAgeControl(map);
     if (state.alertsEnabled && apiRef) startAlerts(apiRef);
     if (state.sitesOnMap && apiRef) startSiteMarkers(apiRef, onSitePicked);
@@ -364,6 +488,7 @@ export function destroy(): void {
     destroyLightning();
     unregisterModule('radar-core');
     const map = mapOf();
+    detachMoveEnd(map);
     if (map) removeRadarLayer(map);
     detachRadarAgeControl();
     apiRef = null;
@@ -380,23 +505,21 @@ export async function setOverlayEnabled(enabled: boolean): Promise<void> {
             clearInterval(refreshTimer);
             refreshTimer = null;
         }
+        detachMoveEnd(map);
         if (map) removeRadarLayer(map);
         setRadarAge(null, false);
         state.status = 'Overlay Off';
         return;
     }
     cacheBust = Date.now();
-    if (useRainviewer()) {
-        const rv = await fetchRainviewerHost();
-        rainviewerHost = rv ? rainviewerTileUrl(rv.host, rv.path) : null;
-    } else {
-        rainviewerHost = null;
-    }
+    activeSource.value = resolveRadarSource();
+    await prepareExternalSource(activeSource.value);
     await loadAvailable();
     await loadFrames();
     if (map) {
         ensureRadarLayer(map);
         attachRadarAgeControl(map);
+        attachMoveEnd(map);
     }
     startRefresh();
     state.status = statusText();
@@ -413,6 +536,8 @@ export async function applyRadarSettings(): Promise<void> {
     state.replayIndex = -1;
     stopPlayTimer();
     cacheBust = Date.now();
+    activeSource.value = resolveRadarSource();
+    await prepareExternalSource(activeSource.value);
     await loadAvailable();
     await loadFrames();
     const map = mapOf();

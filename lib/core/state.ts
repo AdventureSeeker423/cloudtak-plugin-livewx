@@ -53,7 +53,14 @@ export interface PersistedSettings {
     forecastSourceId: string;
     layers: Record<string, LayerPersist>;
     densityLightningEnabled: boolean;
-    radarProvider: 'iem' | 'auto';
+    /**
+     * Radar mosaic source:
+     * - iem — US NEXRAD via Iowa Environmental Mesonet
+     * - canada — Environment Canada GeoMet
+     * - rainviewer — RainViewer global composite
+     * - auto — pick by map center (US → IEM, Canada → GeoMet, else RainViewer)
+     */
+    radarProvider: 'iem' | 'canada' | 'rainviewer' | 'auto';
     consentedSources: string[];
     /** Bottom map legend strips. */
     legendsVisible: boolean;
@@ -137,7 +144,7 @@ function load(): PersistedSettings {
                 : defaults.forecastSourceId,
             layers: normalizeLayers(parsed.layers),
             densityLightningEnabled: Boolean(parsed.densityLightningEnabled),
-            radarProvider: parsed.radarProvider === 'auto' ? 'auto' : 'iem',
+            radarProvider: parseRadarProvider(parsed.radarProvider),
             consentedSources: Array.isArray(parsed.consentedSources)
                 ? parsed.consentedSources as string[]
                 : [],
@@ -148,6 +155,16 @@ function load(): PersistedSettings {
     } catch {
         return defaults;
     }
+}
+
+export type RadarProvider = PersistedSettings['radarProvider'];
+
+const RADAR_PROVIDERS = new Set<RadarProvider>(['iem', 'canada', 'rainviewer', 'auto']);
+
+function parseRadarProvider(raw: unknown): RadarProvider {
+    return typeof raw === 'string' && RADAR_PROVIDERS.has(raw as RadarProvider)
+        ? raw as RadarProvider
+        : 'iem';
 }
 
 function normalizeRainWindow(raw: unknown): string {

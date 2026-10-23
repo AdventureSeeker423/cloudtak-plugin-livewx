@@ -59,9 +59,14 @@ export function registerBridgeLayers(): void {
     registerLayer({
         id: 'radar_overlay',
         group: 'radar',
-        label: 'NEXRAD Radar',
-        description: 'NEXRAD overlay',
-        hosts: ['mesonet.agron.iastate.edu', 'api.rainviewer.com', 'tilecache.rainviewer.com'],
+        label: 'Radar',
+        description: 'US NEXRAD, Canada GeoMet, or RainViewer global composite',
+        hosts: [
+            'mesonet.agron.iastate.edu',
+            'geo.weather.gc.ca',
+            'api.rainviewer.com',
+            'tilecache.rainviewer.com',
+        ],
         sends: 'Tiles',
         defaultOpacity: 0.7,
         applyOpacity: () => {

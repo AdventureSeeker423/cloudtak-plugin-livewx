@@ -8,6 +8,7 @@ import { state } from '../core/state.ts';
 import { SURFACE_BG, SURFACE_BORDER, SURFACE_FG } from '../core/theme.ts';
 import type { UnitSystem } from '../core/units.ts';
 import { getProduct } from '../radar/products.ts';
+import { activeSource } from '../radar/radar.ts';
 
 type LabelFn = string | ((units: UnitSystem) => string);
 
@@ -46,7 +47,7 @@ const RAIN_COLORS = [
 const LEGENDS: Record<string, LegendStrip> = {
     radar_overlay: {
         id: 'radar_overlay',
-        label: 'NEXRAD Radar',
+        label: 'Radar',
         unit: 'dBZ',
         colors: [
             '#00ecec', '#01a0f6', '#0000f6', '#00ff00', '#00c800', '#009000',
@@ -59,7 +60,7 @@ const LEGENDS: Record<string, LegendStrip> = {
     },
     radar_velocity: {
         id: 'radar_velocity',
-        label: 'NEXRAD Radar',
+        label: 'Radar',
         unit: 'kt',
         colors: [
             '#02c802', '#008c00', '#015a01', '#969696', '#fdb4b4', '#fd6464', '#fd0000', '#780000',
@@ -224,7 +225,8 @@ function activeStrips(): LegendStrip[] {
     for (const id of MENU_ORDER) {
         if (!layerOn(id)) continue;
         if (id === 'radar_overlay') {
-            const prod = getProduct(state.productId);
+            // Velocity legend only for US single-site products; Canada/Global are rain composites.
+            const prod = activeSource.value === 'iem' ? getProduct(state.productId) : undefined;
             out.push(prod?.filterKind === 'velocity' ? LEGENDS.radar_velocity : LEGENDS.radar_overlay);
             continue;
         }

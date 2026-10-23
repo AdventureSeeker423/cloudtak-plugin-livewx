@@ -1,5 +1,6 @@
 import { RAINVIEWER_API } from '../core/constants.ts';
 import { fetchJson } from '../core/egress.ts';
+import type { ScanFrame } from './tiles.ts';
 
 type RainviewerMaps = {
     host?: string;
@@ -9,25 +10,57 @@ type RainviewerMaps = {
     };
 };
 
-let cached: { host: string; path: string; at: number } | null = null;
+export type RainviewerSnapshot = {
+    host: string;
+    /** Latest observed (past) frame path. */
+    path: string;
+    /** Observed past frames oldest → newest (no nowcast). */
+    frames: ScanFrame[];
+    at: number;
+};
 
-export async function fetchRainviewerHost(): Promise<{ host: string; path: string; at: number } | null> {
+let cached: RainviewerSnapshot | null = null;
+
+/**
+ * RainViewer public weather-maps.json: past frames (~2 h, 10 min) for replay.
+ * Matches Atmosphere: use observed past only, not nowcast forecast frames.
+ * Style 6 = NEXRAD Level III palette so the picture matches US mosaics at the border.
+ */
+export async function fetchRainviewerHost(): Promise<RainviewerSnapshot | null> {
     if (cached && Date.now() - cached.at < 60_000) return cached;
     try {
         const body = await fetchJson<RainviewerMaps>(RAINVIEWER_API);
-        const host = body.host?.replace(/\/$/, '') || 'https://tilecache.rainviewer.com';
-        const frames = [...(body.radar?.past ?? []), ...(body.radar?.nowcast ?? [])];
+        // Always ask the consented tile host (Atmosphere does the same).
+        const host = 'https://tilecache.rainviewer.com';
+        const past = body.radar?.past ?? [];
+        const frames: ScanFrame[] = [];
+        for (const f of past) {
+            if (!f?.path || !f.time) continue;
+            const at = f.time * 1000;
+            frames.push({
+                stamp: f.path,
+                label: new Date(at).toISOString().slice(11, 16) + 'Z',
+                at,
+            });
+        }
         const last = frames[frames.length - 1];
-        if (!last?.path) return null;
-        cached = { host, path: last.path, at: Date.now() };
+        if (!last) return null;
+        cached = { host, path: last.stamp, frames, at: Date.now() };
         return cached;
     } catch {
         return null;
     }
 }
 
-/** MapLibre raster tile template for RainViewer universal composite. */
+/**
+ * MapLibre raster tile template for RainViewer universal composite.
+ * size 256 / color scheme 6 (NEXRAD III) / smooth+snow.
+ * Server plates above zoom 7 — keep maxzoom ≤ 7 on the source.
+ */
 export function rainviewerTileUrl(host: string, path: string): string {
-    // {z}/{x}/{y}/ size / color / options
-    return `${host}${path}/256/{z}/{x}/{y}/2/1_1.png`;
+    return `${host}${path}/256/{z}/{x}/{y}/6/1_1.png`;
+}
+
+export function clearRainviewerCache(): void {
+    cached = null;
 }
