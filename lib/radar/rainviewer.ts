@@ -1,5 +1,5 @@
 import { RAINVIEWER_API } from '../core/constants.ts';
-import { fetchJson } from '../core/egress.ts';
+import { fetchJson, viaProxy } from '../core/egress.ts';
 import type { ScanFrame } from './tiles.ts';
 
 type RainviewerMaps = {
@@ -56,9 +56,10 @@ export async function fetchRainviewerHost(): Promise<RainviewerSnapshot | null> 
  * MapLibre raster tile template for RainViewer universal composite.
  * size 256 / color scheme 6 (NEXRAD III) / smooth+snow.
  * Server plates above zoom 7 — keep maxzoom ≤ 7 on the source.
+ * Routed through the same-origin proxy so CSP connect-src stays on 'self'.
  */
 export function rainviewerTileUrl(host: string, path: string): string {
-    return `${host}${path}/256/{z}/{x}/{y}/6/1_1.png`;
+    return viaProxy(`${host}${path}/256/{z}/{x}/{y}/6/1_1.png`);
 }
 
 export function clearRainviewerCache(): void {
